@@ -1,0 +1,20 @@
+{
+  "name": "corvo-procurement-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Corvo Procurement Intelligence - Full-Stack Policy-Driven PR-to-PO Platform",
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @corvo/api dev\" \"pnpm --filter @corvo/web dev\"",
+    "dev:api": "pnpm --filter @corvo/api dev",
+    "dev:web": "pnpm --filter @corvo/web dev",
+    "build": "pnpm --filter @corvo/shared-types build && pnpm --filter @corvo/policy-schema build && pnpm --filter @corvo/api build && pnpm --filter @corvo/web build",
+    "build:packages": "pnpm --filter @corvo/shared-types build && pnpm --filter @corvo/policy-schema build",
+    "generate-submission": "pnpm --filter @corvo/api generate-submission",
+    "test": "pnpm --filter @corvo/api test",
+    "seed": "pnpm --filter @corvo/api seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}
