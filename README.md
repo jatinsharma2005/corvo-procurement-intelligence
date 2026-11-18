@@ -1,156 +1,295 @@
 # Corvo Procurement Intelligence
 
-> **Autonomous, Policy-Driven Procurement Automation & Governance Platform**  
-> *Built for Cantill.ai Full-Stack Coding Challenge (Round 1)*
+Corvo Procurement Intelligence is an enterprise procurement management and decision automation platform built for the Cantill.ai Full-Stack Coding Challenge. It automates the evaluation of employee purchase requisitions against organizational procurement policies, clubs related items across manufacturing plants, evaluates active rate contracts, ranks preferred suppliers using historical supplier performance data, and generates auditable purchase orders or sourcing requests.
 
 ---
 
-## 1. Executive Summary
+## Evaluation Demo Accounts — Not for Production
 
-**Corvo Procurement Intelligence** is a production-grade, enterprise procurement platform that automates the evaluation of employee purchase requisitions against organizational policy. The platform ingests purchase requests either through an interactive AI-powered conversational interface or bulk CSV batch uploads, clubs requisitions across plant locations within a 14-day calendar window (±7-day need-by), enforces rate contract ceilings, ranks preferred vendors via a 5-factor mathematical matrix, and issues deterministic Purchase Orders (PO) or Sourcing Requests (RFQ/RFP).
+> [!WARNING]
+> **These credentials are provided only for evaluation purposes. They must not be reused in a production environment. The demo accounts should be isolated from any personal or business database.**
+>
+> In a production deployment, initial administrative credentials must be provisioned via high-entropy environment variables (`INITIAL_ADMIN_PASSWORD`), rotated immediately after first boot, and managed exclusively through the authenticated User Management console.
 
-### The Core Architectural Guarantee: Policy-as-Data
-Procurement leadership can upload an amended procurement policy (PDF or natural language text) and **change the application's decision-making behaviour across all plants and routes with ZERO source code modifications and ZERO system restarts**.
+The seeded evaluation database includes two pre-configured accounts representing the system's role-based access tiers:
+
+| Role | Email | Password | Access Scope |
+| :--- | :--- | :--- | :--- |
+| **Administrator** | `admin@corvo.internal` | `admin1234` | Full system access: User provisioning, role assignment, credential resets, account deactivation, policy approval and activation, audit log inspection, and all procurement capabilities. |
+| **Buyer** | `buyer@corvo.internal` | `buyer1234` | Operational procurement access: Batch CSV ingestion, chat-based PR intake, requisition workspace, manual decision overrides with justification comments, rate contract and supplier inspection. |
 
 ---
 
-## 2. System Architecture
+## Project Overview
+
+In industrial organizations, managing thousands of purchase requisitions across multiple operating plants often leads to operational bottlenecks, split orders that miss volume discounts, accidental rate contract ceiling overruns, and non-compliant purchasing routes. 
+
+Corvo Procurement Intelligence solves these challenges through a centralized, policy-driven intake and decision engine:
+
+1. **Employees** submit purchase requests either through an interactive conversational chat interface (natural language) or via bulk CSV batch uploads from plant ERP systems.
+2. **The Decision Engine** matches unstructured item descriptions to the catalog, clubs requisitions within a 14-day calendar window (±7-day need-by proximity), computes group valuations against contract and historical rates, evaluates rate contract validity and financial ceilings, and executes procurement policy rules using a pure Abstract Syntax Tree (AST) evaluator.
+3. **Buyers** review automated decisions in a specialized workspace, inspect item-level breakdowns and supplier ranking scorecards, approve orders, or override routing decisions with mandatory audit-logged justification comments.
+4. **Administrators** control governance: provisioning users (zero public self-registration), updating rate contracts, uploading amended procurement policy circulars, reviewing automated policy diffs, and activating new policy versions without code changes or service restarts.
+
+---
+
+## Key Features
+
+The following capabilities are implemented and verified in the codebase:
+
+- **Chat-Based Purchase Request Creation**: Conversational natural-language requisition intake with entity extraction (item, quantity, plant, need-by date, estimated price, urgency) and interactive clarification when mandatory fields are omitted.
+- **CSV Batch Processing**: High-throughput processing endpoint (`POST /api/process-batch`) that ingests multi-line PR files, validates schemas, executes the 7-stage procurement pipeline, and returns structured JSON or direct CSV output.
+- **Policy-Driven Decisions (Policy-as-Data)**: Abstract Syntax Tree (AST) condition evaluator that interprets procurement rules stored as versioned JSON documents, completely decoupling business policy from application code.
+- **Versioned Procurement Policies**: Support for multiple concurrent policy versions (`v5.0`, `v5.1`) with activation state management, effective dates, and side-by-side visual diffing.
+- **Policy Amendment Upload & Approval**: Administrators can upload amended policy documents (PDF or plain text). The platform extracts rule modifications, computes rule-level differences, and requires explicit Administrator approval before activating.
+- **Hybrid Item Matching**: Multi-stage resolution for free-text requisition descriptions using exact code lookup, engineering abbreviation expansion (`brg` &rarr; `ball bearing`, `hyd` &rarr; `hydraulic`, `pneu` &rarr; `pneumatic`), model-number invariance (e.g., `6308`, `50:1`), and Levenshtein token similarity. Automatically isolates uncataloged items as `NEW_ITEM_SOURCING`.
+- **Requirement Clubbing**: Groups requisitions for the same catalog item and plant within a 14-day calendar window, provided lines fall within a ±7-day need-by proximity. Requisitions marked `EMERGENCY` are segregated into dedicated groups to avoid delaying critical maintenance.
+- **5-Factor Supplier Ranking**: Evaluates and ranks active suppliers per catalog item using a calibrated mathematical matrix combining PO Frequency (25%), Order Recency (25%), Contract History (15%), On-Time Delivery Percentage (20%), and Quality Rating (15%), with a strict four-level tie-breaking hierarchy.
+- **Contract & Historical PO Valuation**: Priority valuation hierarchy (Active Rate Contract &rarr; Lowest 365-Day Historical PO Rate &rarr; Master Catalog Price &rarr; Requester Estimate). Enforces real-time financial ceiling tracking across batch runs and falls back to historical pricing when ceilings are exceeded.
+- **Signed Contract PDF Discovery**: In addition to standard CSV contracts, the backend parses signed contract PDFs (`RC-2026-031` and `RC-2026-033`), dynamically registering supplier rates and value ceilings.
+- **Procurement Routing**: Deterministic policy assignment to Spot PO, Contract PO, Emergency PO, Sourcing Requests (RFQ/RFP), Capex Sourcing, or New Item Sourcing based on financial thresholds and contract availability.
+- **24-Hour Purchase Order Consolidation**: Automatically consolidates multiple requirement groups destined for the same supplier, plant, and procurement route within a 24-hour window under a single Purchase Order number (`PO-YYYY-NNNN`).
+- **Buyer Workspace & Overrides**: Comprehensive operational interface for inspecting requirement groups, viewing supplier ranking scorecards, and submitting manual decision overrides with mandatory written justifications.
+- **Role-Based Access Control (Option B)**: Enterprise security model with strictly Admin-controlled user provisioning, role assignments (`ADMIN` vs. `BUYER`), password management, account deactivation, and zero public registration.
+- **Immutable Governance Audit Logging**: Comprehensive audit trail recording user logins, administrative changes, policy amendments, and manual decision overrides with actor IDs, timestamps, and payload diffs.
+- **Preferred Supplier CSV Export**: Automated generation of `corvo__preferred.csv` ranking top suppliers across all catalog items, alongside `corvo__run1.csv` (Policy v5.0) and `corvo__run2.csv` (Amended Policy v5.1).
+
+---
+
+## Technology Stack
+
+### Frontend (`apps/web`)
+- **Framework**: Next.js 14 (App Router)
+- **UI Library**: React 18, TypeScript (Strict Mode)
+- **Styling**: Tailwind CSS, Tailwind Merge, CLSX
+- **State & Data Fetching**: TanStack React Query v5
+- **Icons & Motion**: Lucide React, Framer Motion
+- **Validation**: Zod, React Hook Form
+
+### Backend (`apps/api`)
+- **Runtime & Server**: Node.js v20+, Express 4, TypeScript
+- **Database & ODM**: MongoDB (Atlas / Local 5.0+) with Mongoose 8
+- **Authentication**: JSON Web Tokens (`jsonwebtoken`), Bcrypt password hashing (`bcryptjs`, 12 rounds)
+- **File Processing**: Multer (in-memory storage buffer), `csv-parse`, `csv-stringify`, `pdf-parse`
+- **Validation**: Zod schema validation on all inputs and API boundaries
+
+### Shared Packages (`packages/`)
+- `@corvo/shared-types`: Canonical TypeScript interfaces for requisitions, requirement groups, contracts, suppliers, purchase orders, and audit logs.
+- `@corvo/policy-schema`: Zod validation schemas and AST condition types for versioned procurement policies.
+
+### Tooling & Infrastructure
+- **Package Manager**: PNPM Workspaces (monorepo architecture)
+- **Test Runner**: Vitest (15 test suites, 103 tests)
+- **Process Orchestration**: Concurrently, TSX
+- **Containerization**: Docker, Docker Compose
+
+---
+
+## System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Client Layer
-        Web["Next.js 14 App Router (Tailwind + Lucide + Framer Motion)"]
-        ChatUI["Employee Chat Intake"]
-        Workspace["Procurement Workspace & Drawer"]
-        PolicyStudio["Policy Studio & Diff Viewer"]
-        ContractsUI["Contract Register & PDF Discovery"]
+    subgraph ClientLayer ["Client Layer (apps/web)"]
+        Browser["Next.js 14 App Router (Port 3000)"]
+        ChatUI["Conversational Intake (/chat)"]
+        WorkspaceUI["Procurement Workspace (/workspace)"]
+        ApprovalsUI["Buyer Overrides (/approvals)"]
+        PolicyUI["Policy Studio & Diff (/policies)"]
+        UserMgmtUI["Admin User Console (/users)"]
+        ContractsUI["Contract & Supplier Register (/contracts, /suppliers)"]
     end
 
-    subgraph API Layer ["Express + TypeScript REST API (Port 4000)"]
-        BatchRoutes["POST /api/process-batch"]
-        ChatRoutes["POST /api/chat/message"]
-        PolicyRoutes["POST /api/policies/upload"]
-        ContractRoutes["POST /api/contracts/upload"]
-        SupplierRoutes["GET /api/suppliers/rankings"]
+    subgraph APILayer ["API Layer (apps/api - Port 4000)"]
+        Router["Express REST Router"]
+        AuthMW["Auth Middleware (Live DB Role Verification)"]
+        BatchEndpoint["POST /api/process-batch"]
+        ChatEndpoint["POST /api/chat/message"]
+        PolicyEndpoints["/api/policies/*"]
+        UserEndpoints["/api/users/*"]
     end
 
-    subgraph Deterministic Engines ["Core Business Engines (Pure TS)"]
-        ItemMatching["Item Matching Engine (Token Normalizer + Levenshtein)"]
-        Clubbing["14-Day Calendar Clubbing Engine"]
-        Valuation["Valuation Engine (Contract > Historical PO > Master)"]
-        ContractsEng["Contract Evaluation & Ceiling Tracker"]
-        RankingEng["5-Factor Preferred Supplier Ranking Engine"]
-        POConsolidation["24-Hour PO Consolidation Engine"]
-        PolicyEngine["AST Dynamic Policy Engine"]
+    subgraph EngineLayer ["Deterministic Procurement Engines"]
+        ItemMatching["1. Item Matching Engine (Token Normalizer + Levenshtein)"]
+        ClubbingEngine["2. Requirement Clubbing (14d Calendar + ±7d Need-By)"]
+        ValuationEngine["3. Valuation Hierarchy (Contract > PO History > Catalog)"]
+        ContractTracker["4. Contract Ceiling & PDF Discovery Engine"]
+        PolicyAST["5. AST Policy Evaluator (Zero-Code Dynamic Execution)"]
+        SupplierRanking["6. 5-Factor Supplier Ranking Matrix"]
+        POConsolidation["7. 24-Hour PO Consolidation Engine"]
     end
 
-    subgraph Data Store ["Storage & Persistence"]
-        MongoDB[("MongoDB Atlas / Local Mongo 6.0")]
-        DataStore["In-Memory CSV Cache / Fallback Store"]
-        AuditTrail["Immutable Governance & Compliance Audit Trail"]
+    subgraph PersistenceLayer ["Persistence & Governance"]
+        MongoDB[("MongoDB Atlas / Local MongoDB")]
+        MemoryCache["In-Memory CSV Data Store (Offline Fallback)"]
+        AuditLogStore[("Immutable Audit Trail")]
     end
 
-    Web --> API Layer
-    API Layer --> Deterministic Engines
-    Deterministic Engines --> Data Store
+    Browser --> Router
+    Router --> AuthMW
+    AuthMW --> BatchEndpoint
+    AuthMW --> ChatEndpoint
+    AuthMW --> PolicyEndpoints
+    AuthMW --> UserEndpoints
+
+    BatchEndpoint --> EngineLayer
+    ChatEndpoint --> EngineLayer
+    EngineLayer --> PersistenceLayer
 ```
 
 ---
 
-## 3. Technology Stack
-
-- **Frontend**: Next.js 14 (App Router), React 18, TypeScript (Strict Mode), Tailwind CSS, TanStack React Query v5, Framer Motion, Lucide React, Zod.
-- **Backend**: Node.js v20/v22, Express, TypeScript, Zod request validation, Multer, `pdf-parse` for signed contract PDF extraction.
-- **Policy Engine**: Pure JSON Abstract Syntax Tree (AST) condition evaluator supporting arbitrary logical predicates (`eq`, `neq`, `lt`, `lte`, `gt`, `gte`, `in`, `contains`, `between`, `date_before`, `date_after`, nested `all`/`any`).
-- **AI Integration**: Provider-independent adapter supporting Google Gemini (`@google/genai`), OpenAI (`openai`), and heuristic rule-based NLP fallback. *AI is strictly restricted to intake assistance and policy drafting; final decisions are 100% deterministic.*
-- **Database**: MongoDB with Mongoose ORM + In-Memory Singleton CSV Data Store fallback for 100% offline test execution.
-- **Testing**: Vitest test runner with unit, integration, and worked-example regression suites.
-
----
-
-## 4. Quick Start & One-Command Setup
+## Local Setup
 
 ### Prerequisites
-- Node.js >= 20.0.0
-- pnpm >= 9.0.0 (or npm)
-- Docker & Docker Compose (Optional, for containerized run)
+- **Node.js**: v20.0.0 or higher
+- **PNPM**: v9.0.0 or higher (`npm install -g pnpm`)
+- **MongoDB**: Local MongoDB instance running on port `27017` or a MongoDB Atlas connection URI
+- **Git**
 
-### Method A: Local Monorepo Run
-
+### 1. Clone & Navigate
 ```bash
-# 1. Clone repository and navigate to corvo-procurement
-cd corvo-procurement
+git clone https://github.com/jatinsharma2005/corvo-procurement-intelligence.git
+cd corvo-procurement-intelligence/corvo-procurement
+```
 
-# 2. Install workspace dependencies
+### 2. Install Dependencies
+```bash
 pnpm install
+```
 
-# 3. Build shared packages
+### 3. Build Shared Workspace Packages
+The API and Web applications depend on shared packages. Build them first:
+```bash
 pnpm build:packages
+```
 
-# 4. Copy environment configuration
+### 4. Configure Environment
+Copy the example environment configuration:
+```bash
+# On Linux / macOS:
 cp .env.example .env
 
-# 5. Run automated test suite (verifies all 14 worked examples)
-pnpm test
-
-# 6. Start API server (Port 4000)
-pnpm --filter @corvo/api dev
-
-# 7. Start Web frontend (Port 3000 in a separate terminal)
-pnpm --filter @corvo/web dev
+# On Windows PowerShell:
+Copy-Item .env.example .env
 ```
-Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+Ensure `MONGODB_URI` points to your local MongoDB or Atlas cluster. For local evaluation, the default values in `.env.example` connect to `mongodb://127.0.0.1:27017/corvo_procurement`.
 
----
-
-### Method B: One-Command Docker Compose
-
+### 5. Seed Database
+Seed initial master items, suppliers, rate contracts, purchase history, Policy v5.0, and initial user accounts:
 ```bash
-# From corvo-procurement/ directory:
+pnpm seed
+```
+
+### 6. Start Development Servers
+You can run both the API and Web applications concurrently:
+```bash
+pnpm dev
+```
+Alternatively, run them in separate terminal windows:
+```bash
+# Terminal 1: Start Express API (Port 4000)
+pnpm dev:api
+
+# Terminal 2: Start Next.js Frontend (Port 3000)
+pnpm dev:web
+```
+Access the application at **[http://localhost:3000](http://localhost:3000)**.
+
+### 7. Production Build & Run
+To compile and test production builds locally:
+```bash
+# Build all packages, API, and Next.js frontend
+pnpm build
+
+# Start the compiled API server
+pnpm start:api
+
+# Start the compiled Next.js server (in a separate terminal)
+pnpm start:web
+```
+
+### 8. Containerized Execution (Docker Compose)
+To run the full stack (MongoDB, API, and Frontend) inside containers:
+```bash
 docker-compose up --build
 ```
-This automatically boots MongoDB (`localhost:27017`), API (`localhost:4000`), and Web application (`localhost:3000`).
+This automatically initializes MongoDB on port `27017`, the API on port `4000`, and the Web frontend on port `3000`.
 
 ---
 
-### Method C: Cloud Production Deployment (Vercel + Render + MongoDB Atlas)
+## Environment Variables
 
-The platform is engineered for zero-friction cloud deployment. For detailed setup steps, environment variable lists, and the post-deployment checklist, refer to **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+The project uses `.env.example` as the source of truth for all required configuration keys. Never commit `.env` files containing real secrets to version control.
 
-- **Frontend (Vercel)**:
-  - **Root Directory**: `apps/web` (Include files outside Root Directory enabled)
-  - **Build Command**: `pnpm build` (triggers `prebuild` to compile shared packages before `next build`)
-  - **Environment Variables**: `NEXT_PUBLIC_API_URL=https://<your-render-service>.onrender.com/api`
-- **Backend (Render Web Service)**:
-  - **Root Directory**: `.` (Repository root)
-  - **Build Command**: `pnpm install && pnpm build:api`
-  - **Start Command**: `pnpm start:api`
-  - **Health Check Path**: `/api/health`
-  - **Environment Variables**: `NODE_ENV=production`, `PORT=10000`, `MONGODB_URI`, `JWT_SECRET`, `CORS_ORIGIN`, `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD`, `INITIAL_BUYER_EMAIL`, `INITIAL_BUYER_PASSWORD`
-- **Database (MongoDB Atlas)**:
-  - Supports standard `mongodb+srv://` connection strings with TLS and automatic seed on cold start.
-  - Safe credential logging: Connection strings are automatically redacted in server logs.
+| Variable | Required In | Purpose | Example / Default |
+| :--- | :---: | :--- | :--- |
+| `NODE_ENV` | API | Application execution mode | `production` or `development` |
+| `PORT` | API | HTTP port for Express server | `4000` (Local) / `10000` (Render) |
+| `MONGODB_URI` | API | MongoDB connection string | `mongodb://127.0.0.1:27017/corvo_procurement` |
+| `JWT_SECRET` | API | High-entropy secret key for signing JWTs | High-entropy 32+ character string |
+| `JWT_EXPIRES_IN` | API | Session validity duration | `8h` |
+| `CORS_ORIGIN` | API | Allowed frontend origins (comma-separated) | `http://localhost:3000` |
+| `INITIAL_ADMIN_EMAIL` | API | Default administrative email for seed | `admin@corvo.internal` |
+| `INITIAL_ADMIN_PASSWORD` | API | Initial administrative password for seed | Secure password string |
+| `INITIAL_BUYER_EMAIL` | API | Default buyer email for seed | `buyer@corvo.internal` |
+| `INITIAL_BUYER_PASSWORD` | API | Initial buyer password for seed | Secure password string |
+| `NEXT_PUBLIC_API_URL` | Web | Base URL of the backend API for client requests | `http://localhost:4000/api` |
+| `AI_PROVIDER` | API | Optional AI integration provider | `fallback`, `gemini`, or `openai` |
+| `GEMINI_API_KEY` | API | Optional API key for Google Gemini intake | Optional |
+| `OPENAI_API_KEY` | API | Optional API key for OpenAI intake | Optional |
 
 ---
 
-## 5. Mandatory API Endpoint: `POST /api/process-batch`
+## API Documentation
 
-The mandatory endpoint processes PR batch CSV files adhering to the official challenge schema and generates deterministic procurement decisions.
+All API endpoints are prefixed with `/api`. Protected routes require a valid Bearer token in the `Authorization` header (`Authorization: Bearer <token>`).
 
-### Endpoint Signature
+### Endpoint Summary
+
+| Method | Endpoint | Auth | Role | Description |
+| :--- | :--- | :---: | :---: | :--- |
+| `GET` | `/api/health` | No | Any | System health check and database connectivity status. |
+| `POST` | `/api/auth/login` | No | Any | Authenticates email and password; returns JWT token and user info. |
+| `GET` | `/api/auth/me` | Yes | Any | Returns profile and verified database role of current session. |
+| `POST` | `/api/auth/logout` | Yes | Any | Invalidates current session and records audit event. |
+| `POST` | `/api/process-batch` | Yes | Any | Core batch processing endpoint for PR CSV files. |
+| `POST` | `/api/chat/message` | Yes | Any | Natural-language purchase request conversational intake. |
+| `GET` | `/api/procurement/decisions` | Yes | Any | Fetches procurement decisions with filtering and pagination. |
+| `POST` | `/api/procurement/decisions/:id/override` | Yes | Any | Submits a manual buyer override with mandatory comment. |
+| `GET` | `/api/policies` | Yes | Any | Lists all policy versions and identifies the currently active version. |
+| `POST` | `/api/policies/upload` | Yes | Any | Uploads a policy amendment document for AST parsing and diffing. |
+| `POST` | `/api/policies/:version/approve` | Yes | `ADMIN` | Approves and immediately activates a proposed policy version. |
+| `GET` | `/api/contracts` | Yes | Any | Returns all active rate contracts and remaining financial ceilings. |
+| `POST` | `/api/contracts/upload` | Yes | `ADMIN` | Uploads and extracts signed contract rate agreements from PDF files. |
+| `GET` | `/api/suppliers/rankings` | Yes | Any | Returns 5-factor preferred supplier rankings for catalog items. |
+| `GET` | `/api/users` | Yes | `ADMIN` | Lists all provisioned user accounts (Buyers cannot access). |
+| `POST` | `/api/users` | Yes | `ADMIN` | Provisions a new user account with assigned role. |
+| `PATCH` | `/api/users/:id` | Yes | `ADMIN` | Modifies user details, role, or active status. |
+| `POST` | `/api/users/:id/reset-password` | Yes | `ADMIN` | Resets a user's password to a secure temporary password. |
+| `GET` | `/api/audit` | Yes | `ADMIN` | Retrieves immutable system audit logs. |
+| `GET` | `/api/export/:type` | Yes | Any | Downloads submission CSVs (`run1`, `run2`, `preferred`). |
+
+---
+
+### Batch Processing Endpoint: `POST /api/process-batch`
+
+The primary automated intake endpoint evaluates complete PR batches according to active policy rules.
+
 - **URL**: `POST /api/process-batch`
-- **Content-Type**: `multipart/form-data` (file upload) OR `application/json` (with raw CSV string)
+- **Content-Type**: `multipart/form-data` (uploading a `.csv` file) or `application/json` (providing `{ "csvContent": "..." }`)
 - **Headers**:
-  - `Accept: application/json` (returns structured JSON response)
-  - `Accept: text/csv` (returns direct CSV file download)
+  - `Accept: application/json` (returns detailed JSON decision response)
+  - `Accept: text/csv` (streams back the processed 13-column decision CSV)
 
-### Request Example (cURL)
+#### cURL Request Example
 ```bash
 curl -X POST http://localhost:4000/api/process-batch \
-  -F "file=@../Cantill_FullStack_Task_Kit/pr_batches/sample_pr_batch.csv"
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Accept: application/json" \
+  -F "file=@sample_pr_batch.csv"
 ```
 
-### JSON Response Schema
+#### JSON Response Schema (Excerpt)
 ```json
 {
   "success": true,
@@ -163,8 +302,6 @@ curl -X POST http://localhost:4000/api/process-batch \
     "total_sourcing_requests": 57,
     "total_procurement_value_inr": 28450120.45
   },
-  "decisions": [ ... ],
-  "requirements": [ ... ],
   "csv_rows": [
     {
       "pr_no": "PR-26-00001",
@@ -176,7 +313,7 @@ curl -X POST http://localhost:4000/api/process-batch \
       "route": "CONTRACT_PO",
       "supplier_id": "S001",
       "unit_price": 547.45,
-      "group_value_inr": 82117.5,
+      "group_value_inr": 82117.50,
       "suggested_supplier_ids": "",
       "policy_version": "v5.0",
       "reason": "Contract RC-2026-001 valid and ceiling available."
@@ -187,138 +324,129 @@ curl -X POST http://localhost:4000/api/process-batch \
 
 ---
 
-## 6. Verification of Worked Examples & Regression Test
+## Testing & Verification
 
-All 14 worked procurement decisions and 3 preferred-supplier rankings documented in `Worked_Examples.pdf` have been codified into automated unit and regression tests.
+The test suite covers unit logic, end-to-end integration flows, and complete regression against all 14 worked procurement examples and 3 supplier ranking examples from the task specification.
 
-To run the full suite:
+### Run Tests
 ```bash
 pnpm test
 ```
 
-### Verified Test Matrix (68 Passing Tests across 13 Test Suites):
-1. **Item Matching Engine** (6 tests): Exact code match, token-level normalizer, domain abbreviation expansion (`brg`, `hyd`, `pneu`), and identification of NEW items.
-2. **Policy-as-Data Engine** (3 tests): Evaluation of AST conditions, dynamic amendment proposals, and zero-code behavioral alteration.
-3. **5-Factor Supplier Ranking** (3 tests): Replicates exact rank and scores for `ITM-1011`, `ITM-1025`, and `ITM-1036`.
-4. **Rate Contract & Ceiling Tracking** (3 tests): Enforces value caps, valid horizons, and PDF contract discovery (`RC-2026-031` & `RC-2026-033`).
-5. **PO Consolidation** (3 tests): 24-hour supplier/plant/route aggregation window.
-6. **Requirement Clubbing** (4 tests): 14-day calendar window, ±7-day need-by window, plant segregation, emergency isolation.
-7. **All 14 Worked Examples** (14 tests): 100% exact match of all worked example decisions.
-8. **186-Line Batch Processing Integration** (2 tests): Evaluates the complete sample batch in < 150ms.
-9. **MongoDB Real Persistence** (4 tests): Verifies database connection state, seeded master collections, purchase request persistence, and complete batch run persistence in MongoDB.
-10. **Policy Amendment Workflow** (4 tests): Dynamic amendment parsing, plain-language diff generation, effective-date activation, and isolation of future-dated policies.
-11. **Chat Intake E2E** (3 tests): Full natural-language PR extraction, conversational clarification of missing fields, and uncataloged item isolation.
-12. **Signed Contract PDF Extraction** (3 tests): Automatic regex/text extraction of vendor IDs, value ceilings, and line items from real signed contract PDFs (`RC-2026-031`, `RC-2026-033`).
-13. **REST API Endpoints Verification** (16 tests): Full coverage of `/api/process-batch`, `/api/procurement`, `/api/policies`, `/api/contracts`, `/api/suppliers`, `/api/audit`, and exports with negative validation and security checks.
+### Verified Test Results
+- **15 Test Suites Passed (15/15)**
+- **103 Tests Passed (103/103)**
+- **0 Failures, 0 Regressions**
+
+```
+Test Files  15 passed (15)
+     Tests  103 passed (103)
+  Duration  ~12s
+```
+
+#### Test Suite Breakdown
+1. **Unit Tests (`tests/unit/`)**:
+   - `item-matching.test.ts`: Exact code lookup, token-level normalizer, technical abbreviation expansion, and uncataloged item classification.
+   - `clubbing.test.ts`: 14-day calendar grouping, plant segregation, ±7-day need-by proximity, and emergency requisition isolation.
+   - `contracts.test.ts`: Validity horizon checks, supplier status validation, financial ceiling tracking, and overflow fallback.
+   - `policy-as-data.test.ts`: Pure JSON AST condition evaluation, nested logical predicates, and zero-code policy evaluation.
+   - `policy-threshold-boundaries.test.ts`: Strict boundary verification (Spot PO < ₹2L, Emergency PO ≤ ₹5L, RFQ < ₹10L, RFP ≥ ₹10L).
+   - `supplier-ranking.test.ts`: 5-factor mathematical matrix calibration replicating Worked Examples 1, 2, and 3.
+   - `po-consolidation.test.ts`: 24-hour supplier, plant, and route PO number aggregation.
+2. **Integration Tests (`tests/integration/`)**:
+   - `batch-processing.test.ts`: Full 186-line sample PR batch evaluation against Policy v5.0.
+   - `api-endpoints.test.ts`: Comprehensive verification of REST endpoints, status codes, and error formatting.
+   - `contract-pdf-extraction.test.ts`: Real extraction of rate contracts `RC-2026-031` and `RC-2026-033` from signed PDF files.
+   - `policy-amendment-workflow.test.ts`: End-to-end amendment parsing, diff generation, and administrative activation.
+   - `chat-intake.test.ts`: Natural language requisition parsing and interactive field collection.
+   - `user-management-rbac.test.ts`: Option B security verification (Admin user provisioning, Buyer restrictions, token validation).
+   - `mongodb-persistence.test.ts`: Live database connection, model schema validation, and persistence across runs.
+3. **Regression Tests (`tests/regression/`)**:
+   - `worked-examples.test.ts`: Strict verification against all 14 official worked examples from the challenge specification.
 
 ---
 
-## 7. Submission Artifacts & Blind Test Readiness
+## Production Deployment
 
-The test runner and export services generate the three mandatory submission CSV files:
-- `yourname__run1.csv`: Decision CSV under Policy v5.0.
-- `yourname__run2.csv`: Decision CSV under amended Policy v5.1.
-- `yourname__preferred.csv`: Ranked preferred suppliers for all catalog items.
+The platform is designed for cloud deployment across decoupled frontend, backend, and database tiers:
 
-To generate these files from the CLI:
-```bash
-pnpm --filter @corvo/api generate-submission
+- **Frontend**: Deployed on [Vercel](https://vercel.com) using Next.js 14 App Router. Requires setting `NEXT_PUBLIC_API_URL` to point to the backend API.
+- **Backend**: Deployed on [Render](https://render.com) as a Node.js Web Service running `pnpm start:api`. Health checks are monitored via `GET /api/health`.
+- **Database**: Managed [MongoDB Atlas](https://www.mongodb.com/atlas) cluster with TLS encryption, automated backups, and secure connection string management.
+
+For complete step-by-step instructions, build configurations, and post-deployment verification procedures, refer to [DEPLOYMENT.md](file:///c:/Users/ns448/OneDrive/Desktop/cellint.ai/Cantill_FullStack_Task_Kit/corvo-procurement/DEPLOYMENT.md).
+
+---
+
+## Project Structure
+
+```
+corvo-procurement/
+├── apps/
+│   ├── api/                              # Express REST API backend
+│   │   ├── src/
+│   │   │   ├── config/                   # Environment configuration & secrets
+│   │   │   ├── engines/                  # Deterministic procurement decision engines
+│   │   │   │   ├── contract-evaluation.ts
+│   │   │   │   ├── item-matching.ts
+│   │   │   │   ├── po-consolidation.ts
+│   │   │   │   ├── policy-engine.ts
+│   │   │   │   ├── requirement-clubbing.ts
+│   │   │   │   ├── supplier-ranking.ts
+│   │   │   │   └── valuation.ts
+│   │   │   ├── middleware/               # Auth & RBAC middleware
+│   │   │   ├── models/                   # Mongoose data models
+│   │   │   ├── routes/                   # API route handlers
+│   │   │   ├── scripts/                  # DB seed & password reset CLI
+│   │   │   ├── services/                 # Business logic & data access services
+│   │   │   └── server.ts                 # Express application entry point
+│   │   └── package.json
+│   └── web/                              # Next.js 14 App Router frontend
+│       ├── src/
+│       │   ├── app/                      # App router page routes
+│       │   │   ├── approvals/            # Buyer override interface
+│       │   │   ├── audit/                # Immutable audit log viewer
+│       │   │   ├── chat/                 # Natural language conversational intake
+│       │   │   ├── contracts/            # Rate contract register & PDF discovery
+│       │   │   ├── dashboard/            # Executive procurement metrics
+│       │   │   ├── login/                # Authentication page
+│       │   │   ├── policies/             # Policy Studio & AST diff viewer
+│       │   │   ├── suppliers/            # Supplier rankings & performance
+│       │   │   ├── users/                # Admin user management console
+│       │   │   └── workspace/            # Procurement workspace & batch processor
+│       │   ├── components/               # Reusable UI components & layouts
+│       │   └── lib/                      # API client & utility functions
+│       └── package.json
+├── packages/
+│   ├── policy-schema/                    # Shared Zod schemas for Policy AST
+│   └── shared-types/                     # Shared TypeScript data models
+├── submission/                           # Official submission CSV artifacts
+│   ├── corvo__preferred.csv              # Top 3 ranked suppliers per catalog item
+│   ├── corvo__run1.csv                   # 186-line batch decisions under Policy v5.0
+│   └── corvo__run2.csv                   # 186-line batch decisions under Policy v5.1
+├── tests/                                # Vitest test suites (103 tests)
+│   ├── integration/                      # API, DB, and batch integration tests
+│   ├── regression/                       # Worked examples regression tests
+│   └── unit/                             # Engine-specific unit tests
+├── .env.example                          # Canonical environment configuration template
+├── APPROACH.md                           # Detailed engineering architecture & approach
+├── DECISIONS.md                          # Architecture Decision Records (ADRs)
+├── DEPLOYMENT.md                         # Production deployment walkthrough
+├── docker-compose.yml                    # Local multi-container development configuration
+├── package.json                          # Monorepo root scripts & devDependencies
+└── pnpm-workspace.yaml                   # PNPM workspace definition
 ```
 
 ---
 
-## 8. User Management & Role-Based Access Control (Option B)
+## Submission Artifacts
 
-Corvo Procurement Intelligence implements **Option B: Admin-controlled user creation and role assignment with secure login and NO public registration**.
+The required evaluation CSV artifacts are located in `submission/`:
+- `submission/corvo__run1.csv`: 186 purchase requisition lines evaluated under Corvo Procurement Policy v5.0.
+- `submission/corvo__run2.csv`: 186 purchase requisition lines evaluated under Amended Policy v5.1.
+- `submission/corvo__preferred.csv`: Ranked preferred suppliers for catalog items based on historical performance.
 
-### 8.1 Core Security & Governance Guarantees
-
-1. **Zero Public Registration**: There is no self-service sign-up route or invitation link. All user accounts must be provisioned directly by an authorized Administrator inside the authenticated `/users` console.
-2. **Database-Verified Role Authority**: Role claims in JWT tokens or browser local storage are strictly treated as untrusted hints. Every protected API request queries the live MongoDB `User` document to verify current authorization and active status (`isActive === true`).
-3. **Password Security & Secrets Isolation**: Passwords are cryptographically hashed using `bcrypt` (12 rounds). Raw passwords and password hashes are permanently excluded from all JSON API responses, database queries (`select('-passwordHash')`), and audit log payloads.
-4. **Last Active Administrator Safety Guard**: The backend engine programmatically forbids deactivating, demoting, or deleting the last active Administrator account, preventing administrative lockout.
-5. **Comprehensive Governance Audit Trail**: Every administrative action (user creation, profile modification, role escalation/demotion, password reset, account deactivation/reactivation) is recorded in the immutable `AuditLog` collection with actor ID, IP address, timestamp, and metadata diffs.
-
----
-
-### 8.2 Role-Based Access Control (RBAC) Matrix
-
-| Capability / Resource | Endpoint / Route | ADMIN | BUYER | Notes |
-| :--- | :--- | :---: | :---: | :--- |
-| **System Overview & Health** | `/dashboard`, `GET /api/health` | ✅ Full | ✅ Full | Tailored viewports based on authenticated role |
-| **User Management Console** | `/users`, `GET /api/users` | ✅ Full | ❌ 403 Forbidden | Buyers cannot view or enumerate company users |
-| **Create New User** | `POST /api/users` | ✅ Admin Only | ❌ 403 Forbidden | Enforces unique email, strong password, role check |
-| **Edit User & Role Assignment** | `PATCH /api/users/:id` | ✅ Admin Only | ❌ 403 Forbidden | Protected by last-admin safety guard |
-| **Reset User Password** | `POST /api/users/:id/reset-password` | ✅ Admin Only | ❌ 403 Forbidden | Generates high-entropy passwords |
-| **Deactivate / Activate Account**| `PATCH /api/users/:id` (`isActive`) | ✅ Admin Only | ❌ 403 Forbidden | Deactivated accounts are barred at login |
-| **Audit Logs Viewer** | `/audit`, `GET /api/audit` | ✅ Full | ❌ 403 Forbidden | Complete trail of policy, contract, and user actions |
-| **Policy Amendment Upload & AST** | `/policies`, `POST /api/policies/upload`| ✅ Full | ✅ View Drafts | Both can upload/view drafts; only Admin can activate |
-| **Policy Activation / Approval** | `POST /api/policies/:version/approve` | ✅ Admin Only | ❌ 403 Forbidden | Strictly restricted to governance administrators |
-| **PR Processing & Batch Intake** | `/workspace`, `POST /api/process-batch` | ✅ Full | ✅ Full | Mandatory batch processing & CSV download |
-| **Conversational PR Chat Intake** | `/chat`, `POST /api/chat/message` | ✅ Full | ✅ Full | AI-assisted NLP extraction with deterministic evaluation |
-| **Decision Overrides & Approvals** | `/approvals`, `POST /api/procurement/...`| ✅ Full | ✅ Full | Requires mandatory justification comments |
-| **Contract & Supplier Management**| `/contracts`, `/suppliers` | ✅ Full | ✅ Full | Master data registers & preferred supplier ranking |
-
----
-
-### 8.3 Environment Configuration & Seeding
-
-Configure initial administrative credentials in your `.env` file prior to initial setup:
-
+These artifacts can be regenerated at any time using:
 ```bash
-# Database & Authentication Secrets
-MONGODB_URI=mongodb://127.0.0.1:27017/corvo_procurement
-JWT_SECRET=your-enterprise-jwt-secret-minimum-32-chars
-JWT_EXPIRES_IN=8h
-CORS_ORIGIN=http://localhost:3000
-
-# Initial Provisioned Accounts (Option B Seed)
-INITIAL_ADMIN_EMAIL=admin@corvo.internal
-INITIAL_ADMIN_PASSWORD=Admin@Corvo2026!
-INITIAL_BUYER_EMAIL=buyer@corvo.internal
-INITIAL_BUYER_PASSWORD=Buyer@Corvo2026!
+pnpm generate-submission
 ```
-
-To seed the initial administrative accounts and master data into MongoDB:
-
-```bash
-pnpm seed
-```
-
----
-
-### 8.4 User Management Workflows (Admin Console)
-
-1. **Sign In**: Navigate to `http://localhost:3000/login` and log in with your administrative credentials.
-2. **Navigate to Users**: Click **User Management** in the navigation header or visit `/users`.
-3. **Create User**:
-   - Click the **+ New User** button.
-   - Enter Full Name, Email, Department, and Plant assignment.
-   - Choose Role (`ADMIN` or `BUYER`).
-   - Use the built-in **Generate Temporary Password** helper or enter a custom 8+ character password.
-   - Click **Create User Account**.
-4. **Edit User / Role Modification**:
-   - Click the **Edit** action button on any user row.
-   - Update name, plant, department, or escalate/demote roles.
-   - Changes take effect immediately on next token verification.
-5. **Reset Password**:
-   - Click **Reset Password** on any user row.
-   - Generate a temporary password, copy it to clipboard, and dispatch it to the employee.
-6. **Account Deactivation / Reactivation**:
-   - Click the **Deactivate** toggle button on an active account.
-   - Confirm in the warning dialog. Deactivated users cannot log in (rejected with 403 Forbidden).
-   - Re-enable at any time with a single click.
-7. **Mobile Responsiveness**:
-   - On screens under 768px, the user console transforms into responsive user cards with zero horizontal overflow, thumb-friendly modal triggers, and copy helpers.
-
----
-
-## 9. AI Assistance Disclosure
-
-Development assistance was used for implementation, refactoring, documentation and test diagnosis. Procurement decisions are produced by deterministic local engines; AI providers may assist only with intake or amendment drafting.
-
----
-
-## 10. License & Confidentiality
-
-Corvo Procurement Intelligence is developed for evaluation purposes. The underlying dataset files in `Cantill_FullStack_Task_Kit/` are kept strictly private and outside the public Git repository in compliance with challenge guidelines.
