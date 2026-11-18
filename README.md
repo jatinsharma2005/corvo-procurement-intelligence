@@ -176,7 +176,7 @@ To run the full suite:
 pnpm test
 ```
 
-### Verified Test Matrix (38 Passing Tests):
+### Verified Test Matrix (68 Passing Tests across 13 Test Suites):
 1. **Item Matching Engine** (6 tests): Exact code match, token-level normalizer, domain abbreviation expansion (`brg`, `hyd`, `pneu`), and identification of NEW items.
 2. **Policy-as-Data Engine** (3 tests): Evaluation of AST conditions, dynamic amendment proposals, and zero-code behavioral alteration.
 3. **5-Factor Supplier Ranking** (3 tests): Replicates exact rank and scores for `ITM-1011`, `ITM-1025`, and `ITM-1036`.
@@ -185,6 +185,11 @@ pnpm test
 6. **Requirement Clubbing** (4 tests): 14-day calendar window, ±7-day need-by window, plant segregation, emergency isolation.
 7. **All 14 Worked Examples** (14 tests): 100% exact match of all worked example decisions.
 8. **186-Line Batch Processing Integration** (2 tests): Evaluates the complete sample batch in < 150ms.
+9. **MongoDB Real Persistence** (4 tests): Verifies database connection state, seeded master collections, purchase request persistence, and complete batch run persistence in MongoDB.
+10. **Policy Amendment Workflow** (4 tests): Dynamic amendment parsing, plain-language diff generation, effective-date activation, and isolation of future-dated policies.
+11. **Chat Intake E2E** (3 tests): Full natural-language PR extraction, conversational clarification of missing fields, and uncataloged item isolation.
+12. **Signed Contract PDF Extraction** (3 tests): Automatic regex/text extraction of vendor IDs, value ceilings, and line items from real signed contract PDFs (`RC-2026-031`, `RC-2026-033`).
+13. **REST API Endpoints Verification** (16 tests): Full coverage of `/api/process-batch`, `/api/procurement`, `/api/policies`, `/api/contracts`, `/api/suppliers`, `/api/audit`, and exports with negative validation and security checks.
 
 ---
 
@@ -202,6 +207,98 @@ pnpm --filter @corvo/api generate-submission
 
 ---
 
-## 8. License & Confidentiality
+## 8. User Management & Role-Based Access Control (Option B)
+
+Corvo Procurement Intelligence implements **Option B: Admin-controlled user creation and role assignment with secure login and NO public registration**.
+
+### 8.1 Core Security & Governance Guarantees
+
+1. **Zero Public Registration**: There is no self-service sign-up route or invitation link. All user accounts must be provisioned directly by an authorized Administrator inside the authenticated `/users` console.
+2. **Database-Verified Role Authority**: Role claims in JWT tokens or browser local storage are strictly treated as untrusted hints. Every protected API request queries the live MongoDB `User` document to verify current authorization and active status (`isActive === true`).
+3. **Password Security & Secrets Isolation**: Passwords are cryptographically hashed using `bcrypt` (12 rounds). Raw passwords and password hashes are permanently excluded from all JSON API responses, database queries (`select('-passwordHash')`), and audit log payloads.
+4. **Last Active Administrator Safety Guard**: The backend engine programmatically forbids deactivating, demoting, or deleting the last active Administrator account, preventing administrative lockout.
+5. **Comprehensive Governance Audit Trail**: Every administrative action (user creation, profile modification, role escalation/demotion, password reset, account deactivation/reactivation) is recorded in the immutable `AuditLog` collection with actor ID, IP address, timestamp, and metadata diffs.
+
+---
+
+### 8.2 Role-Based Access Control (RBAC) Matrix
+
+| Capability / Resource | Endpoint / Route | ADMIN | BUYER | Notes |
+| :--- | :--- | :---: | :---: | :--- |
+| **System Overview & Health** | `/dashboard`, `GET /api/health` | ✅ Full | ✅ Full | Tailored viewports based on authenticated role |
+| **User Management Console** | `/users`, `GET /api/users` | ✅ Full | ❌ 403 Forbidden | Buyers cannot view or enumerate company users |
+| **Create New User** | `POST /api/users` | ✅ Admin Only | ❌ 403 Forbidden | Enforces unique email, strong password, role check |
+| **Edit User & Role Assignment** | `PATCH /api/users/:id` | ✅ Admin Only | ❌ 403 Forbidden | Protected by last-admin safety guard |
+| **Reset User Password** | `POST /api/users/:id/reset-password` | ✅ Admin Only | ❌ 403 Forbidden | Generates high-entropy passwords |
+| **Deactivate / Activate Account**| `PATCH /api/users/:id` (`isActive`) | ✅ Admin Only | ❌ 403 Forbidden | Deactivated accounts are barred at login |
+| **Audit Logs Viewer** | `/audit`, `GET /api/audit` | ✅ Full | ❌ 403 Forbidden | Complete trail of policy, contract, and user actions |
+| **Policy Amendment Upload & AST** | `/policies`, `POST /api/policies/upload`| ✅ Full | ✅ View Drafts | Both can upload/view drafts; only Admin can activate |
+| **Policy Activation / Approval** | `POST /api/policies/:version/approve` | ✅ Admin Only | ❌ 403 Forbidden | Strictly restricted to governance administrators |
+| **PR Processing & Batch Intake** | `/workspace`, `POST /api/process-batch` | ✅ Full | ✅ Full | Mandatory batch processing & CSV download |
+| **Conversational PR Chat Intake** | `/chat`, `POST /api/chat/message` | ✅ Full | ✅ Full | AI-assisted NLP extraction with deterministic evaluation |
+| **Decision Overrides & Approvals** | `/approvals`, `POST /api/procurement/...`| ✅ Full | ✅ Full | Requires mandatory justification comments |
+| **Contract & Supplier Management**| `/contracts`, `/suppliers` | ✅ Full | ✅ Full | Master data registers & preferred supplier ranking |
+
+---
+
+### 8.3 Environment Configuration & Seeding
+
+Configure initial administrative credentials in your `.env` file prior to initial setup:
+
+```bash
+# Database & Authentication Secrets
+MONGODB_URI=mongodb://127.0.0.1:27017/corvo_procurement
+JWT_SECRET=your-enterprise-jwt-secret-minimum-32-chars
+JWT_EXPIRES_IN=8h
+CORS_ORIGIN=http://localhost:3000
+
+# Initial Provisioned Accounts (Option B Seed)
+INITIAL_ADMIN_EMAIL=admin@corvo.internal
+INITIAL_ADMIN_PASSWORD=Admin@Corvo2026!
+INITIAL_BUYER_EMAIL=buyer@corvo.internal
+INITIAL_BUYER_PASSWORD=Buyer@Corvo2026!
+```
+
+To seed the initial administrative accounts and master data into MongoDB:
+
+```bash
+pnpm seed
+```
+
+---
+
+### 8.4 User Management Workflows (Admin Console)
+
+1. **Sign In**: Navigate to `http://localhost:3000/login` and log in with your administrative credentials.
+2. **Navigate to Users**: Click **User Management** in the navigation header or visit `/users`.
+3. **Create User**:
+   - Click the **+ New User** button.
+   - Enter Full Name, Email, Department, and Plant assignment.
+   - Choose Role (`ADMIN` or `BUYER`).
+   - Use the built-in **Generate Temporary Password** helper or enter a custom 8+ character password.
+   - Click **Create User Account**.
+4. **Edit User / Role Modification**:
+   - Click the **Edit** action button on any user row.
+   - Update name, plant, department, or escalate/demote roles.
+   - Changes take effect immediately on next token verification.
+5. **Reset Password**:
+   - Click **Reset Password** on any user row.
+   - Generate a temporary password, copy it to clipboard, and dispatch it to the employee.
+6. **Account Deactivation / Reactivation**:
+   - Click the **Deactivate** toggle button on an active account.
+   - Confirm in the warning dialog. Deactivated users cannot log in (rejected with 403 Forbidden).
+   - Re-enable at any time with a single click.
+7. **Mobile Responsiveness**:
+   - On screens under 768px, the user console transforms into responsive user cards with zero horizontal overflow, thumb-friendly modal triggers, and copy helpers.
+
+---
+
+## 9. AI Assistance Disclosure
+
+Development assistance was used for implementation, refactoring, documentation and test diagnosis. Procurement decisions are produced by deterministic local engines; AI providers may assist only with intake or amendment drafting.
+
+---
+
+## 10. License & Confidentiality
 
 Corvo Procurement Intelligence is developed for evaluation purposes. The underlying dataset files in `Cantill_FullStack_Task_Kit/` are kept strictly private and outside the public Git repository in compliance with challenge guidelines.

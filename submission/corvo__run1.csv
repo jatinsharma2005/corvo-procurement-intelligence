@@ -75,7 +75,7 @@ PR-26-00032,1,ITM-1009,REQ-0007,PO-0004,PO,CONTRACT_PO,S007,7.06,32546.6,,5.0,Co
 PR-26-00135,1,ITM-1027,REQ-0062,PO-0040,PO,SPOT_PO,S015,269.44,147829.5,,5.0,Value below 2L with purchase history in last 365d. 1st preferred supplier Bharat Bearing House. Clause 5.4
 PR-26-00083,1,ITM-1050,REQ-0063,PO-0041,PO,SPOT_PO,S029,130.83,23319,,5.0,Value below 2L with purchase history in last 365d. 1st preferred supplier SafeGuard Industrial Supplies. Clause 5.4
 PR-26-00013,1,ITM-1041,REQ-0064,PO-0042,PO,CONTRACT_PO,S025,71.5,155870,,5.0,Covered by rate contract RC-2026-009 with Kaveri Corrugators. Clause 5.2
-PR-26-00172,1,ITM-1020,REQ-0065,PO-0043,PO,SPOT_PO,S009,210.17,0,,5.0,Value below 2L with purchase history in last 365d. 1st preferred supplier Weldtech Supplies. Clause 5.4
+PR-26-00172,1,ITM-1020,REQ-0065,,NOT_PROCESSED,NOT_PROCESSED,,,0,,5.0,Invalid quantity: quantity must be a positive number.
 PR-26-00072,1,ITM-1038,REQ-0066,PO-0044,PO,SPOT_PO,S024,166.41,168074.1,,5.0,Value below 2L with purchase history in last 365d. 1st preferred supplier Janatics Dealer Chakan. Clause 5.4
 PR-26-00151,1,ITM-1058,REQ-0067,,SOURCING_REQUEST,RFQ,,,705829.02,S036;S037;S035,5.0,Value < 10L. RFQ with 3 suggested suppliers. Clause 5.5
 PR-26-00133,1,ITM-1027,REQ-0062,PO-0040,PO,SPOT_PO,S015,269.44,147829.5,,5.0,Value below 2L with purchase history in last 365d. 1st preferred supplier Bharat Bearing House. Clause 5.4

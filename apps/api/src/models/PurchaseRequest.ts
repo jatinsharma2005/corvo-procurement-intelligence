@@ -33,7 +33,7 @@ const PurchaseRequestLineSchema = new Schema<IPurchaseRequestLine>({
   uom: { type: String, required: true },
   estimated_unit_price: { type: Number },
   need_by_date: { type: Date, required: true, index: true },
-  urgency: { type: String, enum: ['Normal', 'Emergency'], default: 'Normal' },
+  urgency: { type: String, enum: ['Normal', 'Emergency', 'NORMAL', 'EMERGENCY', 'URGENT'], default: 'Normal' },
   resolved_item_code: { type: String, index: true },
   group_id: { type: String, index: true },
   batch_id: { type: String, index: true }

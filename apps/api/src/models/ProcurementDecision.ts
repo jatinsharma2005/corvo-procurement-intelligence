@@ -44,7 +44,7 @@ const ProcurementDecisionSchema = new Schema<IProcurementDecision>(
     plant: { type: String, required: true, index: true },
     total_quantity: { type: Number, required: true },
     group_value_inr: { type: Number, required: true },
-    decision: { type: String, enum: ['PO', 'SOURCING_REQUEST'], required: true, index: true },
+    decision: { type: String, enum: ['PO', 'SOURCING_REQUEST', 'NOT_PROCESSED'], required: true, index: true },
     route: {
       type: String,
       enum: [

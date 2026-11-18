@@ -64,7 +64,7 @@ describe('Integration Test: Full Sample Batch (186 PR Lines)', () => {
       expect(row.pr_line).toBeTruthy();
       expect(row.resolved_item_code).toBeTruthy();
       expect(row.group_id).toBeTruthy();
-      expect(['PO', 'SOURCING_REQUEST']).toContain(row.decision);
+      expect(['PO', 'SOURCING_REQUEST', 'NOT_PROCESSED']).toContain(row.decision);
       expect([
         'CONTRACT_PO',
         'EMERGENCY_PO',
@@ -72,7 +72,8 @@ describe('Integration Test: Full Sample Batch (186 PR Lines)', () => {
         'RFQ',
         'RFP',
         'CAPEX_SOURCING',
-        'NEW_ITEM_SOURCING'
+        'NEW_ITEM_SOURCING',
+        'NOT_PROCESSED'
       ]).toContain(row.route);
 
       if (row.decision === 'PO') {

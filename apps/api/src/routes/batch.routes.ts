@@ -3,14 +3,30 @@ import multer from 'multer';
 import { BatchService } from '../services/batch.service';
 import { ExportService } from '../services/export.service';
 import { BatchRunModel } from '../models/BatchRun';
+import mongoose from 'mongoose';
+import { authMiddleware } from '../middleware/auth.middleware';
 
-const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (
+      file.mimetype === 'text/csv' ||
+      file.mimetype === 'text/plain' ||
+      file.mimetype === 'application/vnd.ms-excel' ||
+      file.originalname.toLowerCase().endsWith('.csv')
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed for PR batch upload'));
+    }
+  }
+});
 const router = Router();
 const batchService = new BatchService();
 const exportService = new ExportService();
 
 // Mandatory API: POST /api/process-batch
-router.post('/process-batch', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/process-batch', authMiddleware, upload.single('file'), async (req: Request, res: Response) => {
   try {
     let csvContent: string | Buffer = '';
     let filename = 'sample_pr_batch.csv';
@@ -56,13 +72,18 @@ router.post('/process-batch', upload.single('file'), async (req: Request, res: R
     });
   } catch (err: any) {
     console.error('[API /process-batch error]:', err);
-    return res.status(500).json({ error: err.message });
+    const message = err.message || 'Failed to process batch';
+    const status = /missing|required|empty|invalid quantity|invalid csv/i.test(message) ? 400 : 500;
+    return res.status(status).json({ error: message });
   }
 });
 
 // GET /api/batches
-router.get('/batches', async (req: Request, res: Response) => {
+router.get('/batches', authMiddleware, async (req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ batches: BatchService.getFallbackRuns() });
+    }
     const runs = await BatchRunModel.find().sort({ createdAt: -1 }).limit(20).lean();
     return res.json({ batches: runs });
   } catch (err: any) {
@@ -71,8 +92,14 @@ router.get('/batches', async (req: Request, res: Response) => {
 });
 
 // GET /api/batches/:id
-router.get('/batches/:id', async (req: Request, res: Response) => {
+router.get('/batches/:id', authMiddleware, async (req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      const batch = BatchService.getFallbackRuns().find((r) => r.batch_id === req.params.id);
+      if (!batch) return res.status(404).json({ error: 'Batch run not found' });
+      const decisions = await batchService.getBatchDecisions(req.params.id);
+      return res.json({ batch, decisions });
+    }
     const run = await BatchRunModel.findOne({ batch_id: req.params.id }).lean();
     if (!run) return res.status(404).json({ error: 'Batch run not found' });
     const decisions = await batchService.getBatchDecisions(req.params.id);

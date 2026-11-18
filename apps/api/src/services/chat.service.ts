@@ -4,6 +4,7 @@ import { ItemModel } from '../models/Item';
 import { AIService, ExtractedChatPR } from './ai.service';
 import { ItemMatchingEngine } from '../engines/item-matching';
 import { Item, PurchaseRequestLine } from '@corvo/shared-types';
+import { DataStore } from './data-store.service';
 
 export class ChatService {
   private aiService: AIService;
@@ -20,15 +21,21 @@ export class ChatService {
     content: string
   ): Promise<{ message: any; extracted: ExtractedChatPR; candidateItems: Item[] }> {
     // 1. Fetch items
+    let items: Item[] = [];
     const itemsDocs = await ItemModel.find().lean();
-    const items: Item[] = itemsDocs.map((d: any) => ({
-      item_code: d.item_code,
-      description: d.description,
-      uom: d.uom,
-      category: d.category,
-      item_type: d.item_type,
-      standard_price: d.standard_price
-    }));
+    if (itemsDocs.length > 0) {
+      items = itemsDocs.map((d: any) => ({
+        item_code: d.item_code,
+        description: d.description,
+        uom: d.uom,
+        category: d.category,
+        item_type: d.item_type,
+        standard_price: d.standard_price
+      }));
+    } else {
+      await DataStore.getInstance().loadData();
+      items = DataStore.getInstance().getItems();
+    }
     this.itemMatchingEngine.setCatalog(items);
 
     // 2. Fetch or create conversation
@@ -50,11 +57,22 @@ export class ChatService {
     // 3. Extract PR fields using AI service
     const extracted = await this.aiService.extractPRFromChat(content, history, items);
 
-    // 4. Check candidates if item matching is ambiguous or in progress
-    let candidateItems: Item[] = [];
-    if (extracted.description && !extracted.item_code) {
+    // 4. Check candidates if item matching is ambiguous, or populate identified catalog match
+    let candidateItems: any[] = [];
+    if (extracted.item_code) {
+      const match = items.find((i) => i.item_code === extracted.item_code);
+      if (match) {
+        candidateItems = [{
+          ...match,
+          confidence: extracted.confidence || 0.98
+        }];
+      }
+    } else if (extracted.description) {
       const matchResult = this.itemMatchingEngine.match(undefined, extracted.description);
-      candidateItems = matchResult.candidates.map((c) => c.item);
+      candidateItems = matchResult.candidates.map((c) => ({
+        ...c.item,
+        confidence: c.score
+      }));
     }
 
     // 5. Append messages

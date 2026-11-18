@@ -6,13 +6,26 @@ import { SourcingRequestModel } from '../models/SourcingRequest';
 import { PurchaseRequestLineModel } from '../models/PurchaseRequest';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.middleware';
 import { AuditService } from '../services/audit.service';
+import mongoose from 'mongoose';
+import { BatchService } from '../services/batch.service';
 
 const router = Router();
 const auditService = new AuditService();
 
 // GET /api/requirements
-router.get('/requirements', async (req, res) => {
+router.get('/requirements', authMiddleware, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      const groups = BatchService.getFallbackRequirements();
+      const decisions = (await new BatchService().getBatchDecisions()) as any[];
+      const decMap = new Map(decisions.map((d) => [d.group_id, d]));
+      return res.json({
+        requirements: groups.map((g) => ({
+          ...g,
+          decision: decMap.get(g.group_id)
+        }))
+      });
+    }
     const { plant, status, search, limit = 100 } = req.query;
     const q: any = {};
     if (plant) q.plant = plant;
@@ -46,7 +59,7 @@ router.get('/requirements', async (req, res) => {
 });
 
 // GET /api/requirements/:id
-router.get('/requirements/:id', async (req, res) => {
+router.get('/requirements/:id', authMiddleware, async (req, res) => {
   try {
     const group = await RequirementGroupModel.findOne({ group_id: req.params.id }).lean();
     if (!group) return res.status(404).json({ error: 'Requirement not found' });
@@ -67,8 +80,22 @@ router.get('/requirements/:id', async (req, res) => {
 });
 
 // GET /api/decisions
-router.get('/decisions', async (req, res) => {
+router.get('/decisions', authMiddleware, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      const decisions = (await new BatchService().getBatchDecisions()) as any[];
+      const route = req.query.route as string;
+      const decision = req.query.decision as string;
+      const status = req.query.status as string;
+      const search = (req.query.search as string)?.toLowerCase();
+      const filtered = decisions.filter((d) =>
+        (!route || d.route === route) &&
+        (!decision || d.decision === decision) &&
+        (!status || d.status === status) &&
+        (!search || [d.group_id, d.resolved_item_code, d.po_id, d.supplier_id].some((v) => String(v || '').toLowerCase().includes(search)))
+      );
+      return res.json({ decisions: filtered });
+    }
     const { route, decision, status, search, limit = 100 } = req.query;
     const q: any = {};
     if (route) q.route = route;
@@ -211,8 +238,11 @@ router.post('/decisions/:id/override', authMiddleware, async (req: Authenticated
 });
 
 // GET /api/orders
-router.get('/orders', async (req, res) => {
+router.get('/orders', authMiddleware, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ orders: [] });
+    }
     const orders = await PurchaseOrderModel.find().sort({ createdAt: -1 }).lean();
     return res.json({ orders });
   } catch (err: any) {
@@ -221,8 +251,11 @@ router.get('/orders', async (req, res) => {
 });
 
 // GET /api/sourcing
-router.get('/sourcing', async (req, res) => {
+router.get('/sourcing', authMiddleware, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ sourcing_requests: [] });
+    }
     const requests = await SourcingRequestModel.find().sort({ createdAt: -1 }).lean();
     return res.json({ sourcing_requests: requests });
   } catch (err: any) {

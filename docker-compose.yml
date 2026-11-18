@@ -29,7 +29,7 @@ services:
       - NODE_ENV=production
       - PORT=4000
       - MONGODB_URI=mongodb://mongodb:27017/corvo
-      - JWT_SECRET=corvo-super-secret-jwt-key-2026-production
+      - JWT_SECRET=${JWT_SECRET:-change-me-before-production}
       - AI_PROVIDER=heuristic
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}

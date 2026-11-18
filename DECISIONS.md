@@ -96,3 +96,54 @@ In development and automated grading environments (such as Docker containers or 
 
 ### Decision
 `DataStoreService` was architected as a singleton in-memory data store initialized directly from the supplied CSV files in `Cantill_FullStack_Task_Kit/`. If MongoDB is connected, Mongoose schemas persist and query collections normally. If MongoDB is absent or offline, all engines seamlessly fallback to the in-memory singleton. This guarantees that **100% of the unit, integration, and worked example tests pass offline with zero database dependencies**.
+
+---
+
+## ADR 07: Handling Zero-Quantity Requisitions (`NOT_PROCESSED`)
+
+### Context
+In `pr_batches/sample_pr_batch.csv`, row 172 (`PR-26-00172`) specifies a quantity of 0 NOS (`quantity: 0`). A procurement system cannot issue a purchase order or initiate quotation solicitation for zero physical units.
+
+### Decision
+`PR-26-00172` is flagged and assigned the route `NOT_PROCESSED` with decision `SOURCING_REQUEST` and an explicit audit explanation: `"Quantity is 0 or invalid; flagged for buyer review"`. This ensures total transparency without breaking batch pipelines, resulting in 185 successfully routed PR lines and 1 `NOT_PROCESSED` line (186 total lines).
+
+---
+
+## ADR 08: Preferred Supplier Ranking Coverage & Analysis of Zero-Supplier Items
+
+### Context
+`item_master.csv` defines 73 unique catalog items. In the generated `corvo__preferred.csv` as of 2026-11-01:
+- Exactly 68 catalog items have ranked preferred suppliers (155 total rank entries: 68 Rank 1, 54 Rank 2, 33 Rank 3).
+- Exactly 5 catalog items have 0 eligible preferred suppliers.
+
+### Root Cause & Policy Verification
+1. **`ITM-1006` (Stainless Steel Sheet 304 2mm)**:
+   - The only contract covering `ITM-1006` is `RC-2026-005` under supplier `S004` (Metalink Alloys).
+   - In `supplier_master.csv`, `S004` has status `Blocked` (disqualified due to severe non-compliance).
+   - Corvo Procurement Policy v5.0 Clause 5.7 strictly prohibits allocating orders or preferred ranks to `Blocked` suppliers.
+   - Because no other active supplier supplied or contracted `ITM-1006` in the 548-day window, `ITM-1006` legitimately has 0 eligible preferred suppliers.
+2. **`ITM-1025`, `ITM-1032`, `ITM-1055`, `ITM-1060`**:
+   - Inspection of `po_history.csv` and `contract_register.csv` reveals zero transactions and zero active rate contracts for these 4 items within the 548-day evaluation window.
+   - Without historical performance or contracts, ranking points cannot be awarded.
+3. **Items with < 3 Suppliers (35 items)**:
+   - Exactly 35 items have only 1 or 2 eligible active suppliers with history or contracts, resulting in 155 total ranking rows across the 68 covered items.
+
+---
+
+## ADR 09: Option B Admin-Controlled User Management & Zero Public Registration
+
+### Context
+Enterprise procurement systems manage millions of rupees in organizational expenditure and enforce strict governance policies. In such an environment:
+1. Public registration (self-service signup) is a critical compliance and security vulnerability.
+2. User self-selected roles (e.g. an employee choosing "Admin" during signup) violates segregation of duties.
+3. Untrusted JWT token claims or browser storage manipulation could allow privilege escalation.
+
+### Decision
+Option B was architected and implemented with strict security controls:
+1. **Zero Public Signup**: No registration endpoint or link exists. All user accounts must be provisioned directly by an authenticated Administrator in `/users`.
+2. **Database-Driven Role Authority**: Role claims inside JWT tokens are strictly unauthoritative. On every protected request, `authMiddleware` queries MongoDB (`UserModel.findById(decoded.id)`) to retrieve the current database role and account status (`isActive === true`). Forged token claims with role `ADMIN` for a `BUYER` user are denied with 403 Forbidden.
+3. **Cryptographic Protection**: Passwords are saved using `bcrypt` (12 rounds). Neither passwords nor password hashes are ever returned in JSON responses or written to audit logs.
+4. **Last Active Administrator Guard**: The system prevents deactivation, demotion, or deletion of the last remaining active Administrator in the database, preventing organizational lockout.
+5. **Full Audit Logging**: Administrative events (`CREATE`, `UPDATE`, `PASSWORD_RESET`, `DELETE`, `LOGIN`, `LOGOUT`) are recorded in the immutable `AuditLog` collection.
+
+

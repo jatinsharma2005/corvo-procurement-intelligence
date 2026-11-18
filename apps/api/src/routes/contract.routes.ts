@@ -1,13 +1,23 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { ContractService } from '../services/contract.service';
-import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.middleware';
+import { authMiddleware, AuthenticatedRequest, requireRole } from '../middleware/auth.middleware';
 import { AuditService } from '../services/audit.service';
 
-const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only signed PDF contracts are allowed'));
+    }
+  }
+});
 const router = Router();
 const contractService = new ContractService();
 const auditService = new AuditService();
+router.use(authMiddleware);
 
 // GET /api/contracts
 router.get('/', async (req: Request, res: Response) => {
@@ -31,7 +41,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/contracts
-router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', authMiddleware, requireRole('ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
   const { contract } = req.body;
   if (!contract || !contract.contract_id || !contract.supplier_id) {
     return res.status(400).json({ error: 'Valid contract data is required' });
@@ -59,7 +69,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 });
 
 // POST /api/contracts/upload (PDF-only contract extraction)
-router.post('/upload', upload.single('file'), authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/upload', upload.single('file'), authMiddleware, requireRole('ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Contract PDF file is required' });
   }

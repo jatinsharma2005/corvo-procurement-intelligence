@@ -3,9 +3,11 @@ import { ExportService } from '../services/export.service';
 import { ProcurementDecisionModel } from '../models/ProcurementDecision';
 import { PurchaseRequestLineModel } from '../models/PurchaseRequest';
 import { DecisionCSVRow } from '@corvo/shared-types';
+import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
 const exportService = new ExportService();
+router.use(authMiddleware);
 
 // GET /api/exports/decisions
 router.get('/decisions', async (req: Request, res: Response) => {

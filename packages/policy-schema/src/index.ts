@@ -113,7 +113,7 @@ export const PolicyDocumentSchema = z.object({
   document_number: z.string(),
   title: z.string(),
   effective_date: z.string(),
-  status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']),
+  status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED', 'APPROVED']),
   parameters: PolicyParametersSchema,
   rules: z.array(PolicyRuleSchema),
   created_at: z.string(),

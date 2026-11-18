@@ -11,9 +11,10 @@ import { ContractModel } from '../models/Contract';
 import { PolicyVersionModel } from '../models/PolicyVersion';
 import { UserModel } from '../models/User';
 import { DEFAULT_POLICY_V5 } from '@corvo/policy-schema';
+import { findTaskKitDir } from '../services/data-store.service';
 
 // Path to task kit
-const TASK_KIT_DIR = path.resolve(__dirname, '../../../../');
+const TASK_KIT_DIR = findTaskKitDir();
 
 export async function seedDatabase() {
   console.log('🌱 Starting Corvo Procurement Database Seed...');
@@ -200,41 +201,53 @@ export async function seedDatabase() {
   console.log(`✅ Seeded Policy Version ${DEFAULT_POLICY_V5.version} (Status: ACTIVE)`);
 
   // 8. Seed Default Users
-  const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash('Corvo@2026', salt);
+  const adminEmail = (process.env.INITIAL_ADMIN_EMAIL || 'admin@corvo.internal').toLowerCase().trim();
+  const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'Admin@Corvo2026!';
+  const buyerEmail = (process.env.INITIAL_BUYER_EMAIL || 'buyer@corvo.internal').toLowerCase().trim();
+  const buyerPassword = process.env.INITIAL_BUYER_PASSWORD || 'Buyer@Corvo2026!';
+
+  const adminHash = await bcrypt.hash(adminPassword, 12);
+  const buyerHash = await bcrypt.hash(buyerPassword, 12);
 
   const defaultUsers = [
     {
       name: 'R. Sharma',
-      email: 'buyer@corvo.internal',
+      email: buyerEmail,
       role: 'BUYER',
       department: 'Procurement',
       plant: 'PUN1'
     },
     {
       name: 'Head of Procurement',
-      email: 'admin@corvo.internal',
+      email: adminEmail,
       role: 'ADMIN',
       department: 'Procurement',
       plant: 'PUN1'
     },
-    {
-      name: 'M. Shaikh',
-      email: 'employee@corvo.internal',
-      role: 'EMPLOYEE',
-      department: 'Production',
-      plant: 'PUN1'
-    }
   ];
 
-  for (const u of defaultUsers) {
-    await UserModel.findOneAndUpdate(
-      { email: u.email },
-      { ...u, passwordHash },
-      { upsert: true }
-    );
+  const usersWithHashes = [
+    { ...defaultUsers[0], passwordHash: buyerHash, isActive: true },
+    { ...defaultUsers[1], passwordHash: adminHash, isActive: true }
+  ];
+  for (const u of usersWithHashes) {
+    const existing = await UserModel.findOne({ email: u.email });
+    if (!existing) {
+      await UserModel.create(u);
+    } else {
+      // Idempotent: Preserve existing passwordHash and user modifications; never overwrite existing passwords
+      await UserModel.updateOne(
+        { email: u.email },
+        {
+          $set: {
+            role: existing.role || u.role,
+            isActive: existing.isActive ?? true
+          }
+        }
+      );
+    }
   }
-  console.log('✅ Seeded default users (Password: Corvo@2026)');
+  console.log('✅ Seeded initial administrator and buyer accounts (passwords preserved if existing)');
 
   console.log('🎉 Corvo Procurement Database Seed Completed Successfully!');
 }

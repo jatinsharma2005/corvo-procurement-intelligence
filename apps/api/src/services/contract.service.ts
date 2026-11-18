@@ -87,9 +87,12 @@ export class ContractService {
     const contractNoMatch = text.match(/Contract\s+No\.?\s*:\s*([A-Z0-9\-]+)/i) || filename.match(/(RC-202\d-\d{3})/i);
     const contractId = contractNoMatch ? contractNoMatch[1] : `RC-PDF-${Date.now().toString().slice(-4)}`;
 
-    const supplierMatch = text.match(/(?:between.*?and)\s+([A-Za-z0-9\s,\.]+?)\s*\((?:Supplier ID\s*)?([A-Z0-9]+)\)/i);
-    const supplierName = supplierMatch ? supplierMatch[1].trim() : 'Extracted Supplier';
-    const supplierId = supplierMatch ? supplierMatch[2].trim() : 'S001';
+    const sIdMatch = text.match(/Supplier\s+ID\s*[:\s]?\s*([A-Z0-9]+)/i);
+    const supplierId = sIdMatch ? sIdMatch[1].trim() : 'S001';
+
+    const sNameMatch = text.match(/and\s+([A-Za-z0-9\s]+?)(?:,\s*[A-Za-z\s]+)?\s*\(Supplier ID/i) ||
+      text.match(/(?:between.*?and)\s+([A-Za-z0-9\s,\.]+?)\s*\(/i);
+    const supplierName = sNameMatch ? sNameMatch[1].trim() : 'Extracted Supplier';
 
     const termMatch = text.match(/valid\s+from\s+(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})/i);
     const startDate = termMatch ? termMatch[1] : '2026-11-01';
@@ -98,10 +101,11 @@ export class ContractService {
     const ceilingMatch = text.match(/not\s+exceed\s+INR\s+([\d,]+)/i);
     const valueCap = ceilingMatch ? parseFloat(ceilingMatch[1].replace(/,/g, '')) : 2000000;
 
-    const lines: Record<string, { rate: number; description: string; uom: string }> = {};
-    const lineMatches = text.matchAll(/(ITM-\d{4})\s+([A-Za-z0-9\s\-\/\.]+?)\s+(NOS|KG|LTR|MTR|PAIR|BKT|BRL|MON|QTR|JOB)\s+([\d,]+\.?\d*)/g);
+    const lines: Record<string, import('@corvo/shared-types').ContractLine> = {};
+    const lineMatches = text.matchAll(/(ITM-\d{4})\s*([A-Za-z0-9\s\-\/\.]+?)\s*(NOS|KG|LTR|MTR|PAIR|BKT|BRL|MON|QTR|JOB)\s*([\d,]+\.?\d*)/g);
     for (const m of lineMatches) {
       lines[m[1]] = {
+        item_code: m[1],
         rate: parseFloat(m[4].replace(/,/g, '')),
         description: m[2].trim(),
         uom: m[3].trim()

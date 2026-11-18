@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   FileText,
   Layers,
@@ -10,10 +10,8 @@ import {
   Send,
   AlertCircle,
   TrendingUp,
-  CheckCircle2,
   Clock,
   ArrowRight,
-  UploadCloud,
   Download,
   Shield,
   Factory,
@@ -22,62 +20,28 @@ import {
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { api } from '@/lib/api-client';
+import { useAuth } from '@/components/auth-provider';
 import { formatINR, formatNumber, formatDate, getRouteBadge, getStatusBadge } from '@/lib/utils';
 
 export default function DashboardPage() {
-  const queryClient = useQueryClient();
-  const [isProcessingSample, setIsProcessingSample] = useState(false);
-  const [batchNotice, setBatchNotice] = useState<string | null>(null);
-
-  const { data, isLoading, error, refetch } = useQuery({
+  const { user } = useAuth();
+  const { data, refetch } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: () => api.getDashboardSummary(),
   });
 
-  const runSampleMutation = useMutation({
-    mutationFn: async () => {
-      // In browser or fallback, trigger batch
-      // We can fetch sample_pr_batch.csv or call the endpoint
-      const res = await fetch('/api-proxy/process-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: 'sample_pr_batch.csv' }),
-      });
-      if (!res.ok) {
-        // Fallback directly to api client
-        return api.processBatchCSV('');
-      }
-      return res.json();
-    },
-    onSuccess: (res) => {
-      setBatchNotice(`Batch executed successfully! Processed ${res.summary?.total_pr_lines || 186} PR lines across ${res.summary?.total_requirement_groups || 104} groups.`);
-      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      setTimeout(() => setBatchNotice(null), 8000);
-    },
-    onError: (err: any) => {
-      setBatchNotice(`Batch execution error: ${err.message}`);
-    },
-  });
-
   const metrics = data?.metrics || {
-    total_pr_lines: 186,
-    total_requirements: 104,
-    total_purchase_orders: 47,
-    total_sourcing_requests: 57,
-    total_procurement_value_inr: 28450120,
-    pending_approvals: 3,
-    active_policy_version: 'v5.0',
+    total_pr_lines: 0,
+    total_requirements: 0,
+    total_purchase_orders: 0,
+    total_sourcing_requests: 0,
+    total_procurement_value_inr: 0,
+    pending_approvals: 0,
+    active_policy_version: 'Unavailable',
   };
 
-  const plantDist = data?.distributions?.plants || { PUN1: 95, CHK1: 91 };
-  const routeDist = data?.distributions?.routes || {
-    CONTRACT_PO: 42,
-    SPOT_PO: 31,
-    EMERGENCY_PO: 5,
-    RFQ: 18,
-    RFP: 6,
-    CAPEX_SOURCING: 2,
-  };
+  const plantDist = data?.distributions?.plants || {};
+  const routeDist = data?.distributions?.routes || {};
 
   const recentActivity = data?.recent_activity || [];
 
@@ -85,7 +49,7 @@ export default function DashboardPage() {
     <div className="flex-1 flex flex-col bg-slate-50 min-h-screen">
       <Header
         title="Executive Procurement Overview"
-        subtitle="Corvo Policy Engine v5.0 • Live Telemetry & Autonomous Decision Summary"
+        subtitle="Policy-led decisions • Procurement telemetry and audit summary"
       >
         <button
           onClick={() => refetch()}
@@ -97,19 +61,64 @@ export default function DashboardPage() {
       </Header>
 
       <main className="flex-1 p-8 space-y-8 max-w-7xl mx-auto w-full">
-        {/* Batch Notice Banner */}
-        {batchNotice && (
-          <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 flex items-center justify-between animate-fadeIn">
-            <div className="flex items-center gap-3 text-sm font-medium">
-              <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />
-              <span>{batchNotice}</span>
+        {/* Role-tailored Overview Banner */}
+        {user?.role === 'ADMIN' ? (
+          <div className="p-4 bg-gradient-to-r from-blue-900 to-indigo-900 rounded-xl text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm border border-blue-800">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/30 text-blue-200 border border-blue-400/30">
+                  ADMINISTRATOR PORTAL
+                </span>
+                <span className="text-xs text-slate-300">Logged in as {user.name}</span>
+              </div>
+              <div className="text-sm font-semibold">System Governance & Policy Management</div>
+              <div className="text-xs text-slate-300">
+                You have administrative authority to manage users, assign roles, control access status, and approve policy activations.
+              </div>
             </div>
-            <Link
-              href="/workspace"
-              className="text-xs font-semibold text-blue-700 hover:text-blue-800 underline"
-            >
-              View in Workspace &rarr;
-            </Link>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/users"
+                className="px-3 py-1.5 rounded-lg bg-white text-slate-900 text-xs font-semibold hover:bg-slate-100 transition-colors shadow-sm"
+              >
+                Manage Users &rarr;
+              </Link>
+              <Link
+                href="/policies"
+                className="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-semibold hover:bg-blue-600 transition-colors"
+              >
+                Policy Studio
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm border border-slate-700">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                  BUYER WORKSPACE
+                </span>
+                <span className="text-xs text-slate-300">Logged in as {user?.name || 'Buyer'}</span>
+              </div>
+              <div className="text-sm font-semibold">Procurement Intake & Decision Processing</div>
+              <div className="text-xs text-slate-300">
+                Intake purchase requisitions via conversational AI, upload PR batches, and review automated PO/SR routing.
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/chat"
+                className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500 transition-colors shadow-sm"
+              >
+                AI Intake Chat &rarr;
+              </Link>
+              <Link
+                href="/workspace"
+                className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-semibold hover:bg-slate-600 transition-colors"
+              >
+                PR Workspace
+              </Link>
+            </div>
           </div>
         )}
 
@@ -127,8 +136,7 @@ export default function DashboardPage() {
               {formatINR(metrics.total_procurement_value_inr)}
             </div>
             <div className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
-              <span className="text-emerald-600 font-medium">100% Policy-Evaluated</span>
-              <span>across 2 plants</span>
+              <span>Recorded procurement decisions</span>
             </div>
           </div>
 
@@ -146,7 +154,6 @@ export default function DashboardPage() {
             <div className="text-xs text-slate-500 mt-2 flex items-center gap-1">
               <span>Clubbed into</span>
               <span className="font-semibold text-slate-700">{metrics.total_requirements} groups</span>
-              <span className="text-slate-400">(-44% operational overhead)</span>
             </div>
           </div>
 
@@ -205,23 +212,13 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => runSampleMutation.mutate()}
-              disabled={runSampleMutation.isPending}
+            <Link
+              href="/workspace"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-600/30 transition-all disabled:opacity-50"
             >
-              {runSampleMutation.isPending ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Evaluating 186 PRs...</span>
-                </>
-              ) : (
-                <>
-                  <UploadCloud className="w-4 h-4" />
-                  <span>Run Batch Pipeline (186 PRs)</span>
-                </>
-              )}
-            </button>
+              <span>Upload PR batch</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
 
             <Link
               href="/chat"
@@ -258,12 +255,13 @@ export default function DashboardPage() {
                     <div className="text-xl font-bold text-slate-900">{count}</div>
                     <div className="text-[11px] text-slate-400">
                       {route === 'CONTRACT_PO' && 'Rate contract ceiling applied'}
-                      {route === 'SPOT_PO' && '≤ ₹50,000 threshold'}
-                      {route === 'EMERGENCY_PO' && 'Immediate expediting'}
-                      {route === 'RFQ' && '3 quote solicitation'}
-                      {route === 'RFP' && '> ₹10,00,000 formal tender'}
-                      {route === 'CAPEX_SOURCING' && 'Asset capitalization'}
+                      {route === 'SPOT_PO' && '< ₹2,00,000 threshold (365d history)'}
+                      {route === 'EMERGENCY_PO' && 'Immediate expediting (≤ ₹5,00,000)'}
+                      {route === 'RFQ' && '< ₹10,00,000 (3 quote solicitation)'}
+                      {route === 'RFP' && '≥ ₹10,00,000 formal tender (5 quotes)'}
+                      {route === 'CAPEX_SOURCING' && 'Asset capitalization (5 quotes)'}
                       {route === 'NEW_ITEM_SOURCING' && 'Catalog introduction'}
+                      {route === 'NOT_PROCESSED' && 'Invalid / zero quantity'}
                     </div>
                   </div>
                 );

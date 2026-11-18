@@ -22,8 +22,10 @@ import {
 import { Header } from '@/components/layout/header';
 import { api } from '@/lib/api-client';
 import { formatDate } from '@/lib/utils';
+import { useAuth } from '@/components/auth-provider';
 
 export default function PolicyStudioPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [amendmentText, setAmendmentText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -278,14 +280,16 @@ export default function PolicyStudioPage() {
                 </div>
               </div>
 
-              <button
-                onClick={() => approveMutation.mutate(proposalResult.draft_policy?.version)}
-                disabled={approveMutation.isPending}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/30 transition-all flex items-center gap-2"
-              >
-                <Check className="w-4 h-4" />
-                <span>Approve & Activate v{proposalResult.draft_policy?.version}</span>
-              </button>
+              {user?.role === 'ADMIN' && (
+                <button
+                  onClick={() => approveMutation.mutate(proposalResult.draft_policy?.version)}
+                  disabled={approveMutation.isPending}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/30 transition-all flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Approve & Activate v{proposalResult.draft_policy?.version}</span>
+                </button>
+              )}
             </div>
 
             {/* Diff Columns */}

@@ -52,15 +52,20 @@ export default function SuppliersPage() {
         title="Supplier Intelligence & Preferred Rankings"
         subtitle="48 Vetted Suppliers • 5-Factor Weighted Performance Matrix • Reference Pricing"
       >
-        <a
-          href={api.getPreferredSuppliersExportUrl(asOfDate)}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await api.downloadPreferredSuppliersCsv(asOfDate);
+            } catch (error) {
+              window.alert(`CSV export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+          }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all"
         >
           <Download className="w-3.5 h-3.5" />
           <span>Export Preferred CSV</span>
-        </a>
+        </button>
       </Header>
 
       <main className="flex-1 p-8 space-y-8 max-w-7xl mx-auto w-full">

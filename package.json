@@ -11,7 +11,8 @@
     "build:packages": "pnpm --filter @corvo/shared-types build && pnpm --filter @corvo/policy-schema build",
     "generate-submission": "pnpm --filter @corvo/api generate-submission",
     "test": "pnpm --filter @corvo/api test",
-    "seed": "pnpm --filter @corvo/api seed"
+    "seed": "pnpm --filter @corvo/api seed",
+    "reset-password": "pnpm --filter @corvo/api reset-password"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

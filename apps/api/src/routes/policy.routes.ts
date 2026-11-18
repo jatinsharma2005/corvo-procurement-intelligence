@@ -1,13 +1,23 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { PolicyService } from '../services/policy.service';
-import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.middleware';
+import { authMiddleware, AuthenticatedRequest, requireRole } from '../middleware/auth.middleware';
 import { AuditService } from '../services/audit.service';
 
-const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF documents are allowed for policy amendment'));
+    }
+  }
+});
 const router = Router();
 const policyService = new PolicyService();
 const auditService = new AuditService();
+router.use(authMiddleware);
 
 // GET /api/policies
 router.get('/', async (req: Request, res: Response) => {
@@ -98,7 +108,7 @@ router.post('/draft', authMiddleware, async (req: AuthenticatedRequest, res: Res
 });
 
 // POST /api/policies/:version/approve
-router.post('/:version/approve', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:version/approve', authMiddleware, requireRole('ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const approved = await policyService.approvePolicy(
       req.params.version,

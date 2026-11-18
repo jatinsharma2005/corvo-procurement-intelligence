@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import { config } from '../config';
 
+export { mongoose };
+
 export * from './User';
 export * from './Plant';
 export * from './Item';
@@ -18,9 +20,10 @@ export * from './AuditLog';
 export * from './BatchRun';
 
 let isConnected = false;
+mongoose.set('bufferCommands', false);
 
 export async function connectDatabase(): Promise<boolean> {
-  if (isConnected) return true;
+  if (mongoose.connection.readyState === 1) return true;
 
   try {
     await mongoose.connect(config.mongodbUri, {
@@ -28,8 +31,19 @@ export async function connectDatabase(): Promise<boolean> {
     });
     isConnected = true;
     console.log(`[DB] Connected to MongoDB at ${config.mongodbUri}`);
+
+    try {
+      const { UserModel } = await import('./User');
+      if (await UserModel.countDocuments() === 0) {
+        const { seedDatabase } = await import('../scripts/seed');
+        await seedDatabase();
+      }
+    } catch (seedError: any) {
+      console.warn(`[DB] Automatic seed skipped: ${seedError.message}`);
+    }
     return true;
   } catch (err: any) {
+    isConnected = false;
     console.warn(`[DB] MongoDB connection failed (${err.message}). Running in in-memory / local fallback mode.`);
     return false;
   }

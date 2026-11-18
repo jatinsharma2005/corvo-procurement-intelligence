@@ -95,7 +95,7 @@ export interface RequirementGroup {
 }
 
 // Decision & Route Types
-export type DecisionType = 'PO' | 'SOURCING_REQUEST';
+export type DecisionType = 'PO' | 'SOURCING_REQUEST' | 'NOT_PROCESSED';
 
 export type DecisionRoute =
   | 'CONTRACT_PO'
@@ -167,6 +167,7 @@ export interface SupplierRankEntry {
   rank: number;
   supplier_id: string;
   supplier_name: string;
+  name?: string;
   status: SupplierStatus;
   po_count_548d: number;
   recency_score: number;
@@ -175,6 +176,14 @@ export interface SupplierRankEntry {
   quality_rating: number;
   total_score: number;
   reference_price?: number;
+  scores?: {
+    frequency: number;
+    recency: number;
+    contract: number;
+    on_time: number;
+    quality: number;
+  };
+  source?: string;
 }
 
 export interface PreferredSupplierList {
@@ -218,8 +227,12 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  isActive?: boolean;
   department?: string;
   plant?: PlantCode;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // Chat Types
@@ -249,9 +262,9 @@ export interface Conversation {
 // Audit Log
 export interface AuditLog {
   id: string;
-  entity_type: 'POLICY' | 'DECISION' | 'CONTRACT' | 'PR_BATCH' | 'PURCHASE_ORDER' | 'SOURCING_REQUEST';
+  entity_type: 'POLICY' | 'DECISION' | 'CONTRACT' | 'PR_BATCH' | 'PURCHASE_ORDER' | 'SOURCING_REQUEST' | 'USER' | 'AUTH';
   entity_id: string;
-  action: 'CREATE' | 'UPDATE' | 'APPROVE' | 'OVERRIDE' | 'DELETE' | 'ACTIVATE';
+  action: 'CREATE' | 'UPDATE' | 'APPROVE' | 'OVERRIDE' | 'DELETE' | 'ACTIVATE' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_RESET';
   actor: {
     user_id: string;
     name: string;

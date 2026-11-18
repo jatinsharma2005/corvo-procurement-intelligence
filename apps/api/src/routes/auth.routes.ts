@@ -1,11 +1,13 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { config } from '../config';
 import { UserModel } from '../models/User';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.middleware';
+import { AuditService } from '../services/audit.service';
 
 const router = Router();
+const audit = new AuditService();
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -15,19 +17,8 @@ router.post('/login', async (req, res) => {
 
   try {
     const user = await UserModel.findOne({ email: email.toLowerCase().trim() });
-    if (!user) {
-      // Demo fallback user auto-creation
-      if (email === 'buyer@corvo.internal' || email === 'admin@corvo.internal') {
-        const role = email.startsWith('admin') ? 'ADMIN' : 'BUYER';
-        const token = jwt.sign(
-          { id: 'usr-demo', email, role, name: 'Corvo Procurement' },
-          config.jwtSecret,
-          { expiresIn: config.jwtExpiresIn }
-        );
-        return res.json({ token, user: { id: 'usr-demo', email, role, name: 'Corvo Procurement' } });
-      }
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user.isActive) return res.status(403).json({ error: 'Account is inactive. Please contact your administrator.' });
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
@@ -37,8 +28,20 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { id: user._id.toString(), email: user.email, role: user.role, name: user.name },
       config.jwtSecret,
-      { expiresIn: config.jwtExpiresIn }
+      { expiresIn: config.jwtExpiresIn as SignOptions['expiresIn'] }
     );
+
+    await audit.log({
+      entity_type: 'AUTH',
+      entity_id: user._id.toString(),
+      action: 'LOGIN',
+      actor: {
+        user_id: user._id.toString(),
+        name: user.name,
+        role: user.role
+      },
+      details: { email: user.email }
+    });
 
     return res.json({
       token,
@@ -47,6 +50,7 @@ router.post('/login', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        isActive: user.isActive,
         department: user.department,
         plant: user.plant
       }
@@ -56,55 +60,35 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.post('/register', async (req, res) => {
-  const { name, email, password, role = 'EMPLOYEE', department, plant } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Name, email, and password required' });
-  }
-
+router.post('/logout', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const existing = await UserModel.findOne({ email: email.toLowerCase().trim() });
-    if (existing) {
-      return res.status(409).json({ error: 'User already exists' });
+    if (req.user) {
+      await audit.log({
+        entity_type: 'AUTH',
+        entity_id: req.user.id,
+        action: 'LOGOUT',
+        actor: {
+          user_id: req.user.id,
+          name: req.user.name,
+          role: req.user.role
+        },
+        details: { email: req.user.email }
+      });
     }
-
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(password, salt);
-
-    const user = new UserModel({
-      name,
-      email: email.toLowerCase().trim(),
-      passwordHash: hash,
-      role,
-      department,
-      plant
-    });
-    await user.save();
-
-    const token = jwt.sign(
-      { id: user._id.toString(), email: user.email, role: user.role, name: user.name },
-      config.jwtSecret,
-      { expiresIn: config.jwtExpiresIn }
-    );
-
-    return res.status(201).json({
-      token,
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department,
-        plant: user.plant
-      }
-    });
+    return res.json({ success: true, message: 'Logged out successfully' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/me', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
-  res.json({ user: req.user });
+router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = await UserModel.findById(req.user!.id).select('-passwordHash').lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    return res.json({ user });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 export const authRoutes = router;

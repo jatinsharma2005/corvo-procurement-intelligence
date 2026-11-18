@@ -178,7 +178,8 @@ export class DynamicPolicyEngine {
         outcome: {
           decision: 'SOURCING_REQUEST',
           route: 'RFQ',
-          supplier_selection: { strategy: 'SUGGEST_RANKED', suggest_count: 3 }
+          supplier_selection: { strategy: 'SUGGEST_RANKED', suggest_count: 3 },
+          requires_approval: true
         }
       };
     }

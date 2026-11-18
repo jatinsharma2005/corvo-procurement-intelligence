@@ -103,13 +103,16 @@ export default function ChatIntakePage() {
 
     try {
       const res = await api.sendChatMessage(text, conversationId);
-      const extracted = res.extracted || {};
+      const extracted: any = res.extracted || {};
       const candidateItems = res.candidate_items || [];
+      const replyContent = typeof res.message === 'string'
+        ? res.message
+        : ((res.message as any)?.content || (res.extracted as any)?.assistant_reply || 'I have processed your request.');
 
       const assistantMsg: ChatMessage = {
         id: `msg-resp-${Date.now()}`,
         sender: 'assistant',
-        content: res.message,
+        content: replyContent,
         timestamp: new Date(),
         extracted,
         candidate_items: candidateItems,
@@ -119,15 +122,15 @@ export default function ChatIntakePage() {
       setMessages((prev) => [...prev, assistantMsg]);
 
       // If extracted info has enough info, set editingItem
-      if (extracted.item_code || extracted.item_description) {
+      if (extracted.item_code || extracted.description || extracted.item_description) {
         setEditingItem({
           item_code: extracted.item_code || (candidateItems[0]?.item_code ?? 'NEW'),
-          item_description: extracted.item_description || (candidateItems[0]?.description ?? text),
+          item_description: extracted.description || extracted.item_description || (candidateItems[0]?.description ?? text),
           quantity: extracted.quantity || 1,
           uom: extracted.uom || 'EA',
-          plant: extracted.plant || 'PUN1',
+          plant: extracted.plant === 'CHK1' ? 'CHK1' : 'PUN1',
           need_by_date: extracted.need_by_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
-          urgency: extracted.urgency || 'NORMAL',
+          urgency: extracted.urgency?.toUpperCase() === 'EMERGENCY' ? 'EMERGENCY' : extracted.urgency?.toUpperCase() === 'URGENT' ? 'URGENT' : 'NORMAL',
           estimated_unit_price: extracted.estimated_unit_price || candidateItems[0]?.standard_price || 0,
         });
       }
@@ -208,7 +211,7 @@ export default function ChatIntakePage() {
                     : 'bg-slate-50 border border-slate-200 text-slate-800 rounded-bl-none'
                 }`}
               >
-                <div>{msg.content}</div>
+                <div>{typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}</div>
 
                 {/* Candidate Items Badges */}
                 {msg.candidate_items && msg.candidate_items.length > 0 && (
@@ -237,7 +240,7 @@ export default function ChatIntakePage() {
                               </span>
                             )}
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">
-                              {Math.round(cand.confidence * 100)}% Match
+                              {Math.round((cand.confidence ?? 0.95) * 100)}% Match
                             </span>
                           </div>
                         </button>

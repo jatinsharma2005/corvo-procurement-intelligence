@@ -5,18 +5,33 @@ import { PurchaseHistoryModel } from '../models/PurchaseHistory';
 import { ContractService } from '../services/contract.service';
 import { SupplierRankingEngine } from '../engines/supplier-ranking';
 import { Item, Supplier, PurchaseHistoryRecord } from '@corvo/shared-types';
+import mongoose from 'mongoose';
+import { DataStore } from '../services/data-store.service';
+import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
 const contractService = new ContractService();
+router.use(authMiddleware);
 
 // GET /api/suppliers
 router.get('/', async (req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      await DataStore.getInstance().loadData();
+      let suppliers = DataStore.getInstance().getSuppliers();
+      const status = req.query.status as string;
+      const category = req.query.category as string;
+      const search = (req.query.search as string)?.toLowerCase();
+      if (status) suppliers = suppliers.filter((s) => s.status === status);
+      if (category) suppliers = suppliers.filter((s) => s.categories.includes(category));
+      if (search) suppliers = suppliers.filter((s) => s.supplier_id.toLowerCase().includes(search) || s.name.toLowerCase().includes(search));
+      return res.json({ suppliers });
+    }
     const { status, category, search } = req.query;
     const q: any = {};
-    if (status) q.status = status;
-    if (category) q.categories = category;
-    if (search) {
+    if (typeof status === 'string') q.status = status;
+    if (typeof category === 'string') q.categories = category;
+    if (typeof search === 'string') {
       q.$or = [
         { supplier_id: { $regex: search, $options: 'i' } },
         { name: { $regex: search, $options: 'i' } }
@@ -24,6 +39,19 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     const suppliers = await SupplierModel.find(q).sort({ supplier_id: 1 }).lean();
+    if (suppliers.length === 0) {
+      await DataStore.getInstance().loadData();
+      let fallbackSuppliers = DataStore.getInstance().getSuppliers();
+      if (typeof status === 'string') fallbackSuppliers = fallbackSuppliers.filter((s) => s.status === status);
+      if (typeof category === 'string') fallbackSuppliers = fallbackSuppliers.filter((s) => s.categories.includes(category));
+      if (typeof search === 'string') {
+        const needle = String(search).toLowerCase();
+        fallbackSuppliers = fallbackSuppliers.filter((s) =>
+          s.supplier_id.toLowerCase().includes(needle) || s.name.toLowerCase().includes(needle)
+        );
+      }
+      return res.json({ suppliers: fallbackSuppliers });
+    }
     return res.json({ suppliers });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -40,6 +68,16 @@ router.get('/rankings', async (req: Request, res: Response) => {
   }
 
   try {
+    if (mongoose.connection.readyState !== 1) {
+      await DataStore.getInstance().loadData();
+      const engine = new SupplierRankingEngine(
+        DataStore.getInstance().getSuppliers(),
+        DataStore.getInstance().getPOHistory(),
+        DataStore.getInstance().getContracts()
+      );
+      const rankings = engine.rankSuppliers(itemCode, asOfDate);
+      return res.json({ item_code: itemCode, as_of_date: asOfDate, rankings });
+    }
     const [suppliersDocs, poHistoryDocs, contracts] = await Promise.all([
       SupplierModel.find().lean(),
       PurchaseHistoryModel.find().lean(),
@@ -67,6 +105,16 @@ router.get('/rankings', async (req: Request, res: Response) => {
       plant: d.plant,
       delivered_on_time: d.delivered_on_time
     }));
+
+    if (suppliers.length === 0) {
+      await DataStore.getInstance().loadData();
+      const rankings = new SupplierRankingEngine(
+        DataStore.getInstance().getSuppliers(),
+        DataStore.getInstance().getPOHistory(),
+        DataStore.getInstance().getContracts()
+      ).rankSuppliers(itemCode, asOfDate);
+      return res.json({ item_code: itemCode, as_of_date: asOfDate, rankings });
+    }
 
     const engine = new SupplierRankingEngine(suppliers, poHistory, contracts);
     const rankings = engine.rankSuppliers(itemCode, asOfDate);

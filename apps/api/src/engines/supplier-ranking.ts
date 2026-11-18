@@ -142,12 +142,26 @@ export class SupplierRankingEngine {
         on_time_pct: sup.on_time_pct,
         quality_rating: sup.quality_rating,
         total_score: Math.round(totalScore * 100) / 100,
-        reference_price: refPrice !== undefined ? Math.round(refPrice * 100) / 100 : undefined
+        scores: {
+          frequency: Math.round(freqScore * 25.0 * 10) / 10,
+          recency: Math.round(recency * 25.0 * 10) / 10,
+          contract: Math.round(contractScore * 15.0 * 10) / 10,
+          on_time: Math.round(onTimeScore * 20.0 * 10) / 10,
+          quality: Math.round(qualityScore * 15.0 * 10) / 10
+        },
+        reference_price: refPrice !== undefined ? Math.round(refPrice * 100) / 100 : undefined,
+        source: data.pos.length > 0 ? 'PO History (Last 548d)' : (data.hasContract ? 'Active Rate Contract' : 'Standard Master')
       });
     }
 
-    // Sort descending by total_score
-    ranked.sort((a, b) => b.total_score - a.total_score);
+    // Deterministic tie-breakers make supplier choice stable across runs.
+    ranked.sort((a, b) =>
+      b.total_score - a.total_score ||
+      b.on_time_pct - a.on_time_pct ||
+      b.quality_rating - a.quality_rating ||
+      (a.reference_price ?? Number.MAX_SAFE_INTEGER) - (b.reference_price ?? Number.MAX_SAFE_INTEGER) ||
+      a.supplier_id.localeCompare(b.supplier_id)
+    );
 
     // Assign 1-based ranks
     ranked.forEach((r, idx) => {

@@ -16,9 +16,14 @@ router.post('/message', authMiddleware, async (req: AuthenticatedRequest, res: R
 
   try {
     const result = await chatService.handleMessage(convId, userId, content);
+    const replyText = typeof result.message === 'string'
+      ? result.message
+      : (result.message?.content || result.extracted?.assistant_reply || 'I have processed your request.');
+
     return res.json({
       conversation_id: convId,
-      message: result.message,
+      message: replyText,
+      message_obj: result.message,
       extracted: result.extracted,
       candidate_items: result.candidateItems
     });

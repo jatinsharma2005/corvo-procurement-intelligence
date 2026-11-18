@@ -8,6 +8,7 @@
     "start": "node dist/server.js",
     "seed": "tsx src/scripts/seed.ts",
     "generate-submission": "tsx ../../scripts/generate-submission.ts",
+    "reset-password": "tsx src/scripts/reset-password.ts",
     "test": "vitest run"
   },
   "dependencies": {

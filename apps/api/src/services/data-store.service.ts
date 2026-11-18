@@ -14,6 +14,7 @@ export function findTaskKitDir(): string {
     path.resolve(__dirname, '../../../../'),
     path.resolve(process.cwd(), '..'),
     process.cwd(),
+    'C:\\Users\\ns448\\OneDrive\\Desktop\\cellint ai\\Cantill_FullStack_Task_Kit',
     'C:\\Users\\ns448\\OneDrive\\Desktop\\cellint.ai\\Cantill_FullStack_Task_Kit'
   ];
   for (const c of candidates) {
@@ -195,9 +196,9 @@ export class DataStore {
           value_cap: 2000000.0,
           consumed_value: 0.0,
           lines: {
-            'ITM-1036': { rate: 3537.76, description: 'Pneumatic cylinder 50x100', uom: 'NOS' },
-            'ITM-1037': { rate: 2439.01, description: 'Solenoid valve 5/2 1/4 inch', uom: 'NOS' },
-            'ITM-1039': { rate: 2746.87, description: 'FRL unit 1/2 inch', uom: 'NOS' }
+            'ITM-1036': { item_code: 'ITM-1036', rate: 3537.76, description: 'Pneumatic cylinder 50x100', uom: 'NOS' },
+            'ITM-1037': { item_code: 'ITM-1037', rate: 2439.01, description: 'Solenoid valve 5/2 1/4 inch', uom: 'NOS' },
+            'ITM-1039': { item_code: 'ITM-1039', rate: 2746.87, description: 'FRL unit 1/2 inch', uom: 'NOS' }
           },
           is_pdf_only: true
         },
@@ -210,8 +211,8 @@ export class DataStore {
           value_cap: 5000000.0,
           consumed_value: 0.0,
           lines: {
-            'ITM-1056': { rate: 64654.36, description: 'Laptop i5 16GB 512GB', uom: 'NOS' },
-            'ITM-1057': { rate: 10689.51, description: '24 inch monitor', uom: 'NOS' }
+            'ITM-1056': { item_code: 'ITM-1056', rate: 64654.36, description: 'Laptop i5 16GB 512GB', uom: 'NOS' },
+            'ITM-1057': { item_code: 'ITM-1057', rate: 10689.51, description: '24 inch monitor', uom: 'NOS' }
           },
           is_pdf_only: true
         }

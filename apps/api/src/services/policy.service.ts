@@ -43,10 +43,16 @@ export class PolicyService {
     this.inMemoryPolicies.set(policy.version, policy);
   }
 
-  public async getActivePolicy(): Promise<PolicyDocument> {
+  public async getActivePolicy(asOfDate: string | Date = new Date()): Promise<PolicyDocument> {
+    const asOf = typeof asOfDate === 'string' ? new Date(asOfDate) : asOfDate;
     if (mongoose.connection.readyState === 1) {
       try {
-        const doc = await PolicyVersionModel.findOne({ status: 'ACTIVE' }).sort({ effective_date: -1 }).lean();
+        const doc = await PolicyVersionModel.findOne({
+          status: { $in: ['ACTIVE', 'APPROVED'] },
+          effective_date: { $lte: asOf }
+        })
+          .sort({ effective_date: -1 })
+          .lean();
         if (doc) {
           return this.mapDocToPolicy(doc);
         }
@@ -54,10 +60,16 @@ export class PolicyService {
         console.warn(`[PolicyService] DB active policy error: ${err.message}`);
       }
     }
-    // Return active from memory
-    for (const p of this.inMemoryPolicies.values()) {
-      if (p.status === 'ACTIVE') return p;
-    }
+    // Return active from memory with effective date filtering
+    const eligible = Array.from(this.inMemoryPolicies.values())
+      .filter(
+        (p) =>
+          (p.status === 'ACTIVE' || p.status === 'APPROVED') &&
+          new Date(p.effective_date).getTime() <= asOf.getTime()
+      )
+      .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
+
+    if (eligible.length > 0) return eligible[0];
     return DEFAULT_POLICY_V5;
   }
 
@@ -229,13 +241,18 @@ export class PolicyService {
     const policy = await this.getPolicyByVersion(version);
     if (!policy) throw new Error(`Policy version ${version} not found`);
 
+    const isFuture = new Date(policy.effective_date).getTime() > Date.now();
+    const newStatus = isFuture ? 'APPROVED' : 'ACTIVE';
+
     // In memory update
-    for (const p of this.inMemoryPolicies.values()) {
-      if (p.status === 'ACTIVE' && p.version !== version) {
-        p.status = 'ARCHIVED';
+    if (!isFuture) {
+      for (const p of this.inMemoryPolicies.values()) {
+        if (p.status === 'ACTIVE' && p.version !== version) {
+          p.status = 'ARCHIVED';
+        }
       }
     }
-    policy.status = 'ACTIVE';
+    policy.status = newStatus;
     policy.approved_at = new Date().toISOString();
     policy.approved_by = approvedBy;
     this.inMemoryPolicies.set(version, policy);
@@ -243,15 +260,17 @@ export class PolicyService {
     // In DB update if connected
     if (mongoose.connection.readyState === 1) {
       try {
-        await PolicyVersionModel.updateMany(
-          { status: 'ACTIVE', version: { $ne: version } },
-          { $set: { status: 'ARCHIVED' } }
-        );
+        if (!isFuture) {
+          await PolicyVersionModel.updateMany(
+            { status: 'ACTIVE', version: { $ne: version } },
+            { $set: { status: 'ARCHIVED' } }
+          );
+        }
         await PolicyVersionModel.findOneAndUpdate(
           { version },
           {
             $set: {
-              status: 'ACTIVE',
+              status: newStatus,
               approved_at: new Date(),
               approved_by: approvedBy
             }

@@ -35,7 +35,7 @@ const PolicyVersionSchema = new Schema<IPolicyVersion>(
       purchase_history_recency_days: { type: Number, default: 365 },
       preferred_supplier_window_days: { type: Number, default: 548 }
     },
-    rules: { type: [Schema.Types.Mixed], required: true },
+    rules: { type: Schema.Types.Mixed, required: true },
     amendment_summary: { type: String },
     created_at: { type: Date, default: Date.now },
     approved_at: { type: Date },

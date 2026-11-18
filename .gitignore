@@ -42,3 +42,7 @@ Cantill_FullStack_Task_Kit/
 
 # TypeScript
 *.tsbuildinfo
+
+# Scratch & Temporary Analysis Dumps
+scratch/
+project-structure.txt

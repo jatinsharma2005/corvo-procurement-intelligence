@@ -35,6 +35,11 @@ export interface BatchProcessingResult {
 }
 
 export class BatchService {
+  private static fallbackRuns: any[] = [];
+  private static fallbackDecisions: ProcurementDecision[] = [];
+  private static fallbackRequirements: RequirementGroup[] = [];
+  private static fallbackLines: PurchaseRequestLine[] = [];
+
   private itemMatchingEngine: ItemMatchingEngine;
   private contractService: ContractService;
   private policyService: PolicyService;
@@ -58,6 +63,22 @@ export class BatchService {
       skip_empty_lines: true,
       trim: true
     });
+
+    if (rawRecords.length === 0) {
+      throw new Error('CSV is empty or contains no data rows');
+    }
+    const requiredColumns = ['pr_no', 'pr_line', 'plant', 'description', 'quantity', 'need_by_date'];
+    const missingColumns = requiredColumns.filter((column) => !(column in rawRecords[0]));
+    if (missingColumns.length > 0) {
+      throw new Error(`Missing required CSV columns: ${missingColumns.join(', ')}`);
+    }
+    const invalidLineKeys = new Set<string>();
+    for (const row of rawRecords) {
+      const quantity = parseFloat(row.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        invalidLineKeys.add(`${row.pr_no}/${row.pr_line || '1'}`);
+      }
+    }
 
     // 2. Load context data from DataStore
     const dataStore = DataStore.getInstance();
@@ -152,6 +173,24 @@ export class BatchService {
 
     for (const line of assignedLines) {
       const d = decisionsByGroup.get(line.group_id || '')!;
+      if (invalidLineKeys.has(`${line.pr_no}/${line.pr_line}`)) {
+        csvRows.push({
+          pr_no: line.pr_no,
+          pr_line: line.pr_line,
+          resolved_item_code: d.resolved_item_code,
+          group_id: d.group_id,
+          po_id: '',
+          decision: 'NOT_PROCESSED',
+          route: 'NOT_PROCESSED',
+          supplier_id: '',
+          unit_price: '',
+          group_value_inr: 0,
+          suggested_supplier_ids: '',
+          policy_version: d.policy_version,
+          reason: 'Invalid quantity: quantity must be a positive number.'
+        });
+        continue;
+      }
       csvRows.push({
         pr_no: line.pr_no,
         pr_line: line.pr_line,
@@ -172,59 +211,129 @@ export class BatchService {
     // 8. Persist batch run in DB if MongoDB is connected
     if (mongoose.connection.readyState === 1) {
       try {
-        await BatchRunModel.create({
-          batch_id: batchId,
-          filename,
-          total_lines: prLines.length,
-          total_requirements: groups.length,
-          total_pos: totalPOs,
-          total_sourcing_requests: totalSRs,
-          total_value_inr: Math.round(totalBatchValue * 100) / 100,
-          policy_version: policy.version,
-          status: 'COMPLETED'
-        });
+        await BatchRunModel.findOneAndUpdate(
+          { batch_id: batchId },
+          {
+            batch_id: batchId,
+            filename,
+            total_lines: prLines.length,
+            total_requirements: groups.length,
+            total_pos: totalPOs,
+            total_sourcing_requests: totalSRs,
+            total_value_inr: Math.round(totalBatchValue * 100) / 100,
+            policy_version: policy.version,
+            status: 'COMPLETED'
+          },
+          { upsert: true }
+        );
 
-        const decisionDocs = decisions.map((d) => ({
-          group_id: d.group_id,
-          batch_id: batchId,
-          resolved_item_code: d.resolved_item_code,
-          plant: d.plant,
-          total_quantity: d.total_quantity,
-          group_value_inr: d.group_value_inr,
-          decision: d.decision,
-          route: d.route,
-          supplier_id: d.supplier_id,
-          supplier_name: d.supplier_name,
-          unit_price: d.unit_price,
-          po_id: d.po_id,
-          suggested_supplier_ids: d.suggested_supplier_ids,
-          policy_version: d.policy_version,
-          clause: d.clause,
-          reason: d.reason,
-          rule_id: d.rule_id,
-          calculation_breakdown: d.calculation_breakdown,
-          status: 'PENDING_APPROVAL'
-        }));
-        await ProcurementDecisionModel.insertMany(decisionDocs);
+        if (decisions.length > 0) {
+          const decisionOps = decisions.map((d) => ({
+            updateOne: {
+              filter: { group_id: d.group_id },
+              update: {
+                $set: {
+                  group_id: d.group_id,
+                  batch_id: batchId,
+                  resolved_item_code: d.resolved_item_code,
+                  plant: d.plant,
+                  total_quantity: d.total_quantity,
+                  group_value_inr: d.group_value_inr,
+                  decision: d.decision,
+                  route: d.route,
+                  supplier_id: d.supplier_id,
+                  supplier_name: d.supplier_name,
+                  unit_price: d.unit_price,
+                  po_id: d.po_id,
+                  suggested_supplier_ids: d.suggested_supplier_ids,
+                  policy_version: d.policy_version,
+                  clause: d.clause,
+                  reason: d.reason,
+                  rule_id: d.rule_id,
+                  calculation_breakdown: d.calculation_breakdown,
+                  status: 'PENDING_APPROVAL'
+                }
+              },
+              upsert: true
+            }
+          }));
+          await ProcurementDecisionModel.bulkWrite(decisionOps as any);
+        }
 
-        const groupDocs = groups.map((g) => ({
-          group_id: g.group_id,
-          batch_id: batchId,
-          resolved_item_code: g.resolved_item_code,
-          plant: g.plant,
-          first_created_at: new Date(g.first_created_at),
-          first_need_by: new Date(g.first_need_by),
-          is_emergency: g.is_emergency,
-          total_quantity: g.total_quantity,
-          line_ids: g.lines.map((l) => `${l.pr_no}/${l.pr_line}`),
-          estimated_value_inr: g.estimated_value_inr,
-          valuation_basis: g.valuation_basis,
-          decision_id: g.group_id
-        }));
-        await RequirementGroupModel.insertMany(groupDocs);
+        if (groups.length > 0) {
+          const groupOps = groups.map((g) => ({
+            updateOne: {
+              filter: { group_id: g.group_id },
+              update: {
+                $set: {
+                  group_id: g.group_id,
+                  batch_id: batchId,
+                  resolved_item_code: g.resolved_item_code,
+                  plant: g.plant,
+                  first_created_at: new Date(g.first_created_at),
+                  first_need_by: new Date(g.first_need_by),
+                  is_emergency: g.is_emergency,
+                  total_quantity: g.total_quantity,
+                  line_ids: g.lines.map((l) => `${l.pr_no}/${l.pr_line}`),
+                  estimated_value_inr: g.estimated_value_inr,
+                  valuation_basis: g.valuation_basis,
+                  decision_id: g.group_id
+                }
+              },
+              upsert: true
+            }
+          }));
+          await RequirementGroupModel.bulkWrite(groupOps as any);
+        }
+
+        if (assignedLines.length > 0) {
+          const lineOps = assignedLines.map((l) => ({
+            updateOne: {
+              filter: { pr_no: l.pr_no, pr_line: l.pr_line },
+              update: {
+                $set: {
+                  pr_no: l.pr_no,
+                  pr_line: l.pr_line,
+                  batch_id: batchId,
+                  group_id: l.group_id,
+                  created_at: new Date(l.created_at),
+                  need_by_date: new Date(l.need_by_date),
+                  requester: l.requester,
+                  department: l.department,
+                  plant: l.plant,
+                  item_code: l.item_code,
+                  resolved_item_code: l.item_code,
+                  description: l.description,
+                  quantity: l.quantity,
+                  uom: l.uom,
+                  estimated_unit_price: l.estimated_unit_price,
+                  urgency: l.urgency || 'Normal'
+                }
+              },
+              upsert: true
+            }
+          }));
+          await PurchaseRequestLineModel.bulkWrite(lineOps as any);
+        }
       } catch (err: any) {
         console.warn(`[BatchService] DB persistence warning: ${err.message}`);
       }
+    } else {
+      BatchService.fallbackRuns.unshift({
+        batch_id: batchId,
+        filename,
+        total_lines: prLines.length,
+        total_requirements: groups.length,
+        total_pos: totalPOs,
+        total_sourcing_requests: totalSRs,
+        total_value_inr: Math.round(totalBatchValue * 100) / 100,
+        policy_version: policy.version,
+        status: 'COMPLETED'
+      });
+      BatchService.fallbackRuns = BatchService.fallbackRuns.slice(0, 20);
+      BatchService.fallbackDecisions = decisions;
+      BatchService.fallbackRequirements = groups;
+      BatchService.fallbackLines = assignedLines;
     }
 
     return {
@@ -249,9 +358,21 @@ export class BatchService {
         const docs = await ProcurementDecisionModel.find(query).lean();
         return docs as any;
       } catch {
-        return [];
+        return BatchService.fallbackDecisions;
       }
     }
-    return [];
+    return BatchService.fallbackDecisions;
+  }
+
+  public static getFallbackRuns(): any[] {
+    return BatchService.fallbackRuns;
+  }
+
+  public static getFallbackRequirements(): RequirementGroup[] {
+    return BatchService.fallbackRequirements;
+  }
+
+  public static getFallbackLines(): PurchaseRequestLine[] {
+    return BatchService.fallbackLines;
   }
 }

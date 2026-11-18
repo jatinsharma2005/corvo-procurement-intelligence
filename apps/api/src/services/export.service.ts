@@ -6,9 +6,24 @@ import { ProcurementDecisionModel } from '../models/ProcurementDecision';
 import { PurchaseRequestLineModel } from '../models/PurchaseRequest';
 import mongoose from 'mongoose';
 
+function sanitizeCSVField(val: any): any {
+  if (typeof val === 'string' && /^[=+\-@\t\r]/.test(val)) {
+    return `'${val}`;
+  }
+  return val;
+}
+
 export class ExportService {
   public generateDecisionsCSV(rows: DecisionCSVRow[]): string {
-    return stringify(rows, {
+    const sanitizedRows = rows.map((row) => {
+      const sanitized: any = {};
+      for (const [k, v] of Object.entries(row)) {
+        sanitized[k] = sanitizeCSVField(v);
+      }
+      return sanitized as DecisionCSVRow;
+    });
+
+    return stringify(sanitizedRows, {
       header: true,
       columns: [
         'pr_no',

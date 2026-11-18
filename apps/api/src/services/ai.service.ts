@@ -109,7 +109,8 @@ export class AIService {
     }
 
     // 3. Urgency
-    const urgency = lower.includes('emergency') || lower.includes('urgent') ? 'Emergency' : 'Normal';
+    const isEmergency = lower.includes('emergency') || lower.includes('machine down') || lower.includes('machine is down') || lower.includes('line down');
+    const urgency = isEmergency ? 'Emergency' : (lower.includes('urgent') ? 'Emergency' : 'Normal');
 
     // 4. Need by date extraction
     let needByDate: string | undefined = undefined;
@@ -130,14 +131,37 @@ export class AIService {
       needByDate = d.toISOString().split('T')[0];
     }
 
-    // 5. Item match extraction from description keywords
+    // 5. Item match extraction from description keywords and model numbers
+    let bestScore = 0;
     let matchedItem: Item | undefined = undefined;
+    const modelMatches = (message.match(/\b\d{3,5}\b/g) || []).filter((m) => parseInt(m, 10) !== quantity);
+
     for (const it of items) {
-      const itWords = it.description.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-      const matches = itWords.filter((w) => lower.includes(w));
-      if (matches.length >= 2 || (itWords.length === 1 && matches.length === 1)) {
+      const descLower = it.description.toLowerCase();
+      let score = 0;
+
+      // Heavy weighting for matching specific model numbers (e.g. 6308, 6205, 50:1)
+      for (const m of modelMatches) {
+        if (new RegExp(`\\b${m}\\b`, 'i').test(descLower)) {
+          score += 15;
+        }
+      }
+
+      // Bonus if deep groove or specific phrases match
+      if (lower.includes('deep groove') && descLower.includes('deep groove')) {
+        score += 10;
+      }
+
+      const itWords = descLower.split(/[\s\-\/\(\)]+/).filter((w) => w.length > 2);
+      for (const w of itWords) {
+        if (new RegExp(`\\b${w}\\b`, 'i').test(lower)) {
+          score += 4;
+        }
+      }
+
+      if (score > bestScore && score >= 4) {
+        bestScore = score;
         matchedItem = it;
-        break;
       }
     }
 
@@ -183,6 +207,7 @@ export class AIService {
       plant,
       need_by_date: needByDate,
       urgency,
+      estimated_unit_price: matchedItem?.standard_price,
       missing_fields: missing,
       assistant_reply: reply,
       confidence: matchedItem ? 0.9 : 0.6

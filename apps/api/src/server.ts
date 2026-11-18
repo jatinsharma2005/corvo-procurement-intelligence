@@ -13,12 +13,24 @@ import { exportRoutes } from './routes/export.routes';
 import { auditRoutes } from './routes/audit.routes';
 import { dashboardRoutes } from './routes/dashboard.routes';
 import { healthRoutes } from './routes/health.routes';
+import { userRoutes } from './routes/user.routes';
 
 export const app = express();
 
 // Middlewares
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    const allowedOrigins = new Set([
+      config.corsOrigin,
+      'http://localhost:3000',
+      'http://localhost:3100'
+    ]);
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Origin not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
@@ -37,16 +49,17 @@ if (config.nodeEnv !== 'test') {
 app.use('/api', batchRoutes); // Mounts /api/process-batch
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api', procurementRoutes);
 app.use('/api/procurement', procurementRoutes);
-app.use('/api/requirements', procurementRoutes);
-app.use('/api/decisions', procurementRoutes);
 app.use('/api/policies', policyRoutes);
 app.use('/api/contracts', contractRoutes);
 app.use('/api/suppliers', supplierRoutes);
+app.use('/api/export', exportRoutes);
 app.use('/api/exports', exportRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/users', userRoutes);
 
 // Root route
 app.get('/', (req: Request, res: Response) => {

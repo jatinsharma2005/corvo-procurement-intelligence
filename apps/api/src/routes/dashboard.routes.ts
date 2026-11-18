@@ -6,13 +6,34 @@ import { PurchaseOrderModel } from '../models/PurchaseOrder';
 import { SourcingRequestModel } from '../models/SourcingRequest';
 import { PolicyService } from '../services/policy.service';
 import { AuditService } from '../services/audit.service';
+import mongoose from 'mongoose';
+import { BatchService } from '../services/batch.service';
+import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
 const policyService = new PolicyService();
 const auditService = new AuditService();
+router.use(authMiddleware);
 
 router.get('/summary', async (req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      const runs = BatchService.getFallbackRuns();
+      const latest = runs[0];
+      return res.json({
+        metrics: {
+          total_pr_lines: latest?.total_lines || 0,
+          total_requirements: latest?.total_requirements || 0,
+          total_purchase_orders: latest?.total_pos || 0,
+          total_sourcing_requests: latest?.total_sourcing_requests || 0,
+          total_procurement_value_inr: latest?.total_value_inr || 0,
+          pending_approvals: 0,
+          active_policy_version: latest?.policy_version || '5.0'
+        },
+        distributions: { plants: { PUN1: 0, CHK1: 0 }, routes: {} },
+        recent_activity: []
+      });
+    }
     const [
       totalLines,
       totalGroups,

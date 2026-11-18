@@ -15,7 +15,6 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Building,
-  Sparkles,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { api } from '@/lib/api-client';
@@ -61,26 +60,6 @@ export default function WorkspacePage() {
     },
   });
 
-  const runSampleMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api-proxy/process-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: 'sample_pr_batch.csv' }),
-      });
-      if (!res.ok) {
-        return api.processBatchCSV('');
-      }
-      return res.json();
-    },
-    onSuccess: (res) => {
-      setUploadNotice(`Sample batch processed: ${res.summary?.total_pr_lines || 186} PR lines evaluated!`);
-      queryClient.invalidateQueries({ queryKey: ['requirements'] });
-      setIsUploadModalOpen(false);
-      setTimeout(() => setUploadNotice(null), 8000);
-    },
-  });
-
   const requirements = data?.requirements || [];
 
   // Filter by route locally if specified
@@ -104,21 +83,26 @@ export default function WorkspacePage() {
       >
         <button
           onClick={() => setIsUploadModalOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all"
+          className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all"
         >
           <UploadCloud className="w-3.5 h-3.5" />
           <span>Upload Batch CSV</span>
         </button>
 
-        <a
-          href={api.getPreferredSuppliersExportUrl()}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 shadow-sm transition-all"
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await api.downloadPreferredSuppliersCsv();
+            } catch (error) {
+              window.alert(`CSV export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+          }}
+          className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 shadow-sm transition-all"
         >
           <Download className="w-3.5 h-3.5 text-slate-500" />
           <span>Preferred CSV</span>
-        </a>
+        </button>
       </Header>
 
       <main className="flex-1 p-8 space-y-6 max-w-7xl mx-auto w-full">
@@ -353,7 +337,7 @@ export default function WorkspacePage() {
 
             <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-blue-400 transition-colors bg-slate-50/50">
               <FileSpreadsheet className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-              <label className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer block">
+              <label className="inline-flex min-h-11 w-full items-center justify-center px-4 text-xs font-semibold text-blue-600 hover:underline cursor-pointer">
                 Select CSV File
                 <input
                   type="file"
@@ -365,27 +349,7 @@ export default function WorkspacePage() {
                   }}
                 />
               </label>
-              <span className="text-[11px] text-slate-400 mt-1 block">or click below to evaluate supplied sample batch</span>
-            </div>
-
-            <div className="pt-2 flex flex-col gap-2">
-              <button
-                onClick={() => runSampleMutation.mutate()}
-                disabled={runSampleMutation.isPending}
-                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-all flex items-center justify-center gap-2"
-              >
-                {runSampleMutation.isPending ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Processing 186 lines...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-blue-400" />
-                    <span>Process Official Task Kit Batch (186 PR lines)</span>
-                  </>
-                )}
-              </button>
+              <span className="text-[11px] text-slate-400 mt-1 block">CSV files up to 10 MB</span>
             </div>
           </div>
         </div>

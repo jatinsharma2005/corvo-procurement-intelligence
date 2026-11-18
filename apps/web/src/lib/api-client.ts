@@ -6,6 +6,66 @@ class ApiClient {
   setToken(token: string) {
     this.token = token;
   }
+  clearToken() {
+    this.token = null;
+  }
+  async login(email: string, password: string) {
+    return this.request<{ token: string; user: { id: string; name: string; email: string; role: 'ADMIN' | 'BUYER'; department?: string; plant?: string } }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+  }
+  async getMe() {
+    return this.request<{ user: { id: string; name: string; email: string; role: 'ADMIN' | 'BUYER'; department?: string; plant?: string } }>('/auth/me');
+  }
+  async logout() {
+    try {
+      await this.request<{ success: boolean }>('/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore network errors on logout
+    }
+  }
+  async getUsers(params?: { search?: string; role?: string; status?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set('search', params.search);
+    if (params?.role) qs.set('role', params.role);
+    if (params?.status) qs.set('status', params.status);
+    return this.request<{ users: any[] }>(`/users?${qs.toString()}`);
+  }
+  async createUser(payload: any) {
+    return this.request<{ user: any }>('/users', { method: 'POST', body: JSON.stringify(payload) });
+  }
+  async updateUser(id: string, payload: any) {
+    return this.request<{ user: any }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+  async resetPassword(id: string, password: string) {
+    return this.request<{ success: boolean; message: string }>(`/users/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ password })
+    });
+  }
+  async deleteUser(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/users/${id}`, { method: 'DELETE' });
+  }
+  async downloadDecisionsCsv(batchId?: string) {
+    const query = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : '';
+    await this.downloadCsv(`/export/decisions${query}`, `decisions${batchId ? `_${batchId}` : ''}.csv`);
+  }
+  async downloadPreferredSuppliersCsv(asOfDate: string = '2026-11-01') {
+    await this.downloadCsv(`/export/preferred-suppliers?as_of_date=${encodeURIComponent(asOfDate)}`, 'preferred-suppliers.csv');
+  }
+
+  private async downloadCsv(endpoint: string, filename: string) {
+    const csv = await this.request<string>(endpoint);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
@@ -27,6 +87,12 @@ class ApiClient {
     });
 
     if (!res.ok) {
+      if (res.status === 401 && typeof window !== 'undefined' && !endpoint.startsWith('/auth/login')) {
+        window.localStorage.removeItem('corvo_token');
+        window.localStorage.removeItem('corvo_user');
+        this.clearToken();
+        window.dispatchEvent(new Event('corvo:unauthorized'));
+      }
       let errorMsg = `HTTP Error ${res.status}`;
       try {
         const errorJson = await res.json();
@@ -283,15 +349,6 @@ class ApiClient {
     return this.request<{ logs: any[] }>(`/audit/logs?limit=${limit}`);
   }
 
-  // Export URLs
-  getDecisionsExportUrl(batchId?: string) {
-    const qs = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : '';
-    return `${API_BASE_URL}/export/decisions${qs}`;
-  }
-
-  getPreferredSuppliersExportUrl(asOfDate: string = '2026-11-01') {
-    return `${API_BASE_URL}/export/preferred-suppliers?as_of_date=${encodeURIComponent(asOfDate)}`;
-  }
 }
 
 export const api = new ApiClient();
