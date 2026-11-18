@@ -14,6 +14,8 @@ describe('Phase Two: Real MongoDB Data Persistence Test', () => {
   beforeAll(async () => {
     process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/corvo_procurement';
     await connectDatabase();
+    await PolicyVersionModel.updateMany({ version: { $ne: '5.0' } }, { $set: { status: 'ARCHIVED' } });
+    await PolicyVersionModel.updateOne({ version: '5.0' }, { $set: { status: 'ACTIVE' } });
   });
 
   afterAll(async () => {

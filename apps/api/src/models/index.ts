@@ -27,10 +27,11 @@ export async function connectDatabase(): Promise<boolean> {
 
   try {
     await mongoose.connect(config.mongodbUri, {
-      serverSelectionTimeoutMS: 3000
+      serverSelectionTimeoutMS: 10000
     });
     isConnected = true;
-    console.log(`[DB] Connected to MongoDB at ${config.mongodbUri}`);
+    const sanitizedUri = config.mongodbUri.replace(/\/\/([^:]+):([^@]+)@/, '//$1:***@');
+    console.log(`[DB] Connected to MongoDB at ${sanitizedUri}`);
 
     try {
       const { UserModel } = await import('./User');

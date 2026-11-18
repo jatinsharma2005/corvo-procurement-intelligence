@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { app } from '../../apps/api/src/server';
 import { connectDatabase } from '../../apps/api/src/models';
 import { UserModel } from '../../apps/api/src/models/User';
+import { PolicyVersionModel } from '../../apps/api/src/models/PolicyVersion';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../../apps/api/src/config';
@@ -23,6 +24,8 @@ describe('Phase Nine: Complete REST API Endpoints Verification Suite', () => {
 
   beforeAll(async () => {
     await connectDatabase();
+    await PolicyVersionModel.updateMany({ version: { $ne: '5.0' } }, { $set: { status: 'ARCHIVED' } });
+    await PolicyVersionModel.updateOne({ version: '5.0' }, { $set: { status: 'ACTIVE' } });
     const passwordHash = await bcrypt.hash(testPassword, 4);
     const admin = await UserModel.findOneAndUpdate(
       { email: 'api-test-admin@corvo.internal' },

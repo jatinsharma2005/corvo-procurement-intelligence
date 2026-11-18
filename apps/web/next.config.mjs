@@ -4,7 +4,8 @@ const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   transpilePackages: ['@corvo/shared-types', '@corvo/policy-schema'],
   async rewrites() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const apiUrl = rawUrl.trim().replace(/\/api\/?$/, '').replace(/\/+$/, '');
     return [
       {
         source: '/api-proxy/:path*',

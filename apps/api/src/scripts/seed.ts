@@ -182,6 +182,10 @@ export async function seedDatabase() {
   }
 
   // 7. Seed Policy Version 5.0
+  await PolicyVersionModel.updateMany(
+    { version: { $ne: DEFAULT_POLICY_V5.version } },
+    { $set: { status: 'ARCHIVED' } }
+  );
   await PolicyVersionModel.findOneAndUpdate(
     { version: DEFAULT_POLICY_V5.version },
     {

@@ -1,4 +1,11 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+function resolveApiBaseUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (!envUrl) return 'http://localhost:4000/api';
+  const stripped = envUrl.replace(/\/+$/, '');
+  return stripped.endsWith('/api') ? stripped : `${stripped}/api`;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 class ApiClient {
   private token: string | null = null;

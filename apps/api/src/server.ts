@@ -18,19 +18,30 @@ import { userRoutes } from './routes/user.routes';
 export const app = express();
 
 // Middlewares
+const parseAllowedOrigins = () => {
+  const defaults = ['http://localhost:3000', 'http://localhost:3100'];
+  if (!config.corsOrigin) return defaults;
+  const list = config.corsOrigin.split(',').map((s: string) => s.trim().replace(/\/+$/, '')).filter(Boolean);
+  return Array.from(new Set([...defaults, ...list]));
+};
+
 app.use(cors({
   origin: (origin, callback) => {
-    const allowedOrigins = new Set([
-      config.corsOrigin,
-      'http://localhost:3000',
-      'http://localhost:3100'
-    ]);
-    if (!origin || allowedOrigins.has(origin)) {
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = origin.trim().replace(/\/+$/, '');
+    const allowed = parseAllowedOrigins();
+    if (
+      allowed.includes(normalizedOrigin) ||
+      normalizedOrigin.endsWith('.vercel.app') ||
+      normalizedOrigin.includes('localhost') ||
+      normalizedOrigin.includes('127.0.0.1')
+    ) {
       callback(null, true);
     } else {
-      callback(new Error('Origin not allowed by CORS'));
+      callback(null, false);
     }
   },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
@@ -90,9 +101,10 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // Server initialization
 export async function startServer(port: number = config.port) {
   await connectDatabase();
-  return app.listen(port, () => {
-    console.log(`🚀 Corvo Procurement Intelligence API running on port ${port}`);
+  return app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 Corvo Procurement Intelligence API running on port ${port} (0.0.0.0)`);
     console.log(`📋 Mandatory Endpoint: POST http://localhost:${port}/api/process-batch`);
+    console.log(`🩺 Health Check Endpoint: GET http://localhost:${port}/api/health`);
   });
 }
 

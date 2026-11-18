@@ -9,20 +9,27 @@ import { PurchaseHistoryModel } from '../models/PurchaseHistory';
 import { ContractModel } from '../models/Contract';
 
 export function findTaskKitDir(): string {
+  if (process.env.TASK_KIT_DIR && fs.existsSync(path.join(process.env.TASK_KIT_DIR, 'master_data/item_master.csv'))) {
+    return process.env.TASK_KIT_DIR;
+  }
   const candidates = [
+    process.env.TASK_KIT_DIR,
     path.resolve(__dirname, '../../../../..'),
     path.resolve(__dirname, '../../../../'),
     path.resolve(process.cwd(), '..'),
     process.cwd(),
+    path.resolve(process.cwd(), 'data'),
+    path.resolve(__dirname, '../../data'),
     'C:\\Users\\ns448\\OneDrive\\Desktop\\cellint ai\\Cantill_FullStack_Task_Kit',
     'C:\\Users\\ns448\\OneDrive\\Desktop\\cellint.ai\\Cantill_FullStack_Task_Kit'
-  ];
+  ].filter(Boolean) as string[];
+
   for (const c of candidates) {
     if (fs.existsSync(path.join(c, 'master_data/item_master.csv'))) {
       return c;
     }
   }
-  return 'C:\\Users\\ns448\\OneDrive\\Desktop\\cellint.ai\\Cantill_FullStack_Task_Kit';
+  return path.resolve(process.cwd(), '..');
 }
 
 export class DataStore {

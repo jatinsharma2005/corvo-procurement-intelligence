@@ -113,6 +113,26 @@ This automatically boots MongoDB (`localhost:27017`), API (`localhost:4000`), an
 
 ---
 
+### Method C: Cloud Production Deployment (Vercel + Render + MongoDB Atlas)
+
+The platform is engineered for zero-friction cloud deployment. For detailed setup steps, environment variable lists, and the post-deployment checklist, refer to **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+- **Frontend (Vercel)**:
+  - **Root Directory**: `apps/web` (Include files outside Root Directory enabled)
+  - **Build Command**: `pnpm build` (triggers `prebuild` to compile shared packages before `next build`)
+  - **Environment Variables**: `NEXT_PUBLIC_API_URL=https://<your-render-service>.onrender.com/api`
+- **Backend (Render Web Service)**:
+  - **Root Directory**: `.` (Repository root)
+  - **Build Command**: `pnpm install && pnpm build:api`
+  - **Start Command**: `pnpm start:api`
+  - **Health Check Path**: `/api/health`
+  - **Environment Variables**: `NODE_ENV=production`, `PORT=10000`, `MONGODB_URI`, `JWT_SECRET`, `CORS_ORIGIN`, `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD`, `INITIAL_BUYER_EMAIL`, `INITIAL_BUYER_PASSWORD`
+- **Database (MongoDB Atlas)**:
+  - Supports standard `mongodb+srv://` connection strings with TLS and automatic seed on cold start.
+  - Safe credential logging: Connection strings are automatically redacted in server logs.
+
+---
+
 ## 5. Mandatory API Endpoint: `POST /api/process-batch`
 
 The mandatory endpoint processes PR batch CSV files adhering to the official challenge schema and generates deterministic procurement decisions.
