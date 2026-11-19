@@ -234,7 +234,13 @@ export class DynamicPolicyEngine {
 
     // Construct human-readable reason
     let reasonText = '';
-    if (matchedRule.outcome.route === 'CONTRACT_PO' && contractEval.selected_contract) {
+    if (matchedRule.rule_id === 'RULE_5_2A_CHK1_ELECTRICAL_RFP') {
+      reasonText = `Chakan electrical safety requirement >= ₹50,000 (value >= RFP threshold). Formal RFP with ${suggestedSupplierIds.length} suggested suppliers. Clause ${matchedRule.clause}`;
+    } else if (matchedRule.rule_id === 'RULE_5_2A_CHK1_ELECTRICAL_RFQ') {
+      reasonText = `Chakan electrical safety requirement >= ₹50,000 must be sourced. RFQ with ${suggestedSupplierIds.length} suggested suppliers. Clause ${matchedRule.clause}`;
+    } else if (matchedRule.rule_id === 'RULE_5_4_SPOT_PO_PACKAGING') {
+      reasonText = `Packaging value below 1L with purchase history in last 365d. 1st preferred supplier ${supplierName}. Clause ${matchedRule.clause}`;
+    } else if (matchedRule.outcome.route === 'CONTRACT_PO' && contractEval.selected_contract) {
       reasonText = `Covered by rate contract ${contractEval.selected_contract.contract_id} with ${supplierName}. Clause ${matchedRule.clause}`;
     } else if (matchedRule.outcome.route === 'EMERGENCY_PO') {
       reasonText = `Emergency requirement <= 5L with purchase history in last 365d. 1st preferred supplier ${supplierName}. Clause ${matchedRule.clause}`;
@@ -245,9 +251,11 @@ export class DynamicPolicyEngine {
     } else if (matchedRule.outcome.route === 'NEW_ITEM_SOURCING') {
       reasonText = `Item not in item master (New Item). Sourcing at requester estimated price. Clause ${matchedRule.clause}`;
     } else if (matchedRule.outcome.route === 'RFQ') {
-      reasonText = `Value < 10L. RFQ with ${suggestedSupplierIds.length} suggested suppliers. Clause ${matchedRule.clause}`;
+      const rfpThreshold = (matchedRule.conditions as any)?.value === 800000 ? '8L' : '10L';
+      reasonText = `Value < ${rfpThreshold}. RFQ with ${suggestedSupplierIds.length} suggested suppliers. Clause ${matchedRule.clause}`;
     } else if (matchedRule.outcome.route === 'RFP') {
-      reasonText = `Value >= 10L. Formal RFP with ${suggestedSupplierIds.length} suggested suppliers. Clause ${matchedRule.clause}`;
+      const rfpThreshold = (matchedRule.conditions as any)?.value === 800000 ? '8L' : '10L';
+      reasonText = `Value >= ${rfpThreshold}. Formal RFP with ${suggestedSupplierIds.length} suggested suppliers. Clause ${matchedRule.clause}`;
     } else {
       reasonText = `Evaluated against policy clause ${matchedRule.clause}: ${matchedRule.description}`;
     }

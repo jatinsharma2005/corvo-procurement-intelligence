@@ -3,6 +3,7 @@ import { PolicyVersionModel, IPolicyVersion } from '../models/PolicyVersion';
 import {
   PolicyDocument,
   DEFAULT_POLICY_V5,
+  DEFAULT_POLICY_V5_1,
   PolicyDocumentSchema,
   PolicyRule
 } from '@corvo/policy-schema';
@@ -37,6 +38,7 @@ export class PolicyService {
   constructor() {
     this.aiService = new AIService();
     this.inMemoryPolicies.set('5.0', DEFAULT_POLICY_V5);
+    this.inMemoryPolicies.set('5.1', DEFAULT_POLICY_V5_1);
   }
 
   public addPolicy(policy: PolicyDocument): void {
@@ -88,24 +90,35 @@ export class PolicyService {
   }
 
   public async getPolicyByVersion(version: string): Promise<PolicyDocument | null> {
+    const norm = version.replace(/^v/i, '');
+    const variants = [version, norm, `v${norm}`];
+
     if (mongoose.connection.readyState === 1) {
       try {
-        const doc = await PolicyVersionModel.findOne({ version }).lean();
+        const doc = await PolicyVersionModel.findOne({ version: { $in: variants } }).lean();
         if (doc) return this.mapDocToPolicy(doc);
       } catch (err: any) {
         console.warn(`[PolicyService] DB policy by version error: ${err.message}`);
       }
     }
-    if (this.inMemoryPolicies.has(version)) {
-      return this.inMemoryPolicies.get(version)!;
+    for (const v of variants) {
+      if (this.inMemoryPolicies.has(v)) {
+        return this.inMemoryPolicies.get(v)!;
+      }
     }
-    if (version === '5.0') return DEFAULT_POLICY_V5;
+    if (norm === '5.0') return DEFAULT_POLICY_V5;
+    if (norm === '5.1') return DEFAULT_POLICY_V5_1;
     return null;
   }
 
   public async proposeAmendment(
     input: { text?: string; fileBuffer?: Buffer; filename?: string }
-  ): Promise<{ draftPolicy: PolicyDocument; proposal: PolicyAmendmentProposal; diff: PolicyDiff }> {
+  ): Promise<{
+    draftPolicy: PolicyDocument;
+    proposal: PolicyAmendmentProposal;
+    diff: PolicyDiff;
+    validation: { isValid: boolean; errors?: string[] };
+  }> {
     let documentText = input.text || '';
     if (input.fileBuffer) {
       try {
@@ -118,6 +131,11 @@ export class PolicyService {
 
     const currentPolicy = await this.getActivePolicy();
     const proposal = await this.aiService.parsePolicyAmendment(documentText, currentPolicy);
+
+    if (proposal.is_valid_amendment === false) {
+      const errorMsg = proposal.validation_errors?.join('; ') || 'Invalid policy amendment document: not recognized as an authorized Corvo policy amendment.';
+      throw new Error(errorMsg);
+    }
 
     const newVersion = proposal.version || `5.${parseInt(currentPolicy.version.split('.')[1] || '0', 10) + 1}`;
     const newRules: PolicyRule[] = [];
@@ -144,7 +162,7 @@ export class PolicyService {
 
     const draftPolicy: PolicyDocument = {
       version: newVersion,
-      document_number: currentPolicy.document_number,
+      document_number: proposal.document_reference || currentPolicy.document_number,
       title: proposal.title || `${currentPolicy.title} (Amended)`,
       effective_date: proposal.effective_date || new Date().toISOString().split('T')[0],
       status: 'DRAFT',
@@ -154,10 +172,14 @@ export class PolicyService {
       },
       rules: newRules,
       created_at: new Date().toISOString(),
-      amendment_summary: proposal.amendment_summary || documentText.slice(0, 300)
+      amendment_summary: proposal.amendment_summary
     };
 
-    PolicyDocumentSchema.parse(draftPolicy);
+    const validationResult = PolicyDocumentSchema.safeParse(draftPolicy);
+    if (!validationResult.success) {
+      const errorMsg = validationResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+      throw new Error(`Policy validation failed: ${errorMsg}`);
+    }
 
     // Save in memory
     this.inMemoryPolicies.set(newVersion, draftPolicy);
@@ -186,7 +208,32 @@ export class PolicyService {
     }
 
     const diff = this.computeDiff(currentPolicy, draftPolicy);
-    return { draftPolicy, proposal, diff };
+    return {
+      draftPolicy,
+      proposal,
+      diff,
+      validation: { isValid: true }
+    };
+  }
+
+  public async rejectPolicyDraft(version: string): Promise<boolean> {
+    const policy = await this.getPolicyByVersion(version);
+    if (!policy) throw new Error(`Policy version ${version} not found`);
+    if (policy.status !== 'DRAFT') {
+      throw new Error(`Cannot reject policy with status '${policy.status}'. Only DRAFT policies can be rejected.`);
+    }
+
+    this.inMemoryPolicies.delete(version);
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await PolicyVersionModel.deleteOne({ version, status: 'DRAFT' });
+      } catch (err: any) {
+        console.warn(`[PolicyService] DB delete draft error: ${err.message}`);
+      }
+    }
+
+    return true;
   }
 
   public computeDiff(oldPolicy: PolicyDocument, newPolicy: PolicyDocument): PolicyDiff {

@@ -263,6 +263,12 @@ class ApiClient {
     });
   }
 
+  async rejectPolicyDraft(version: string) {
+    return this.request<{ success: boolean; message: string }>(`/policies/${encodeURIComponent(version)}/draft`, {
+      method: 'DELETE',
+    });
+  }
+
   async getPolicyDiff(version: string) {
     return this.request<{ diff: any }>(`/policies/${encodeURIComponent(version)}/diff`);
   }

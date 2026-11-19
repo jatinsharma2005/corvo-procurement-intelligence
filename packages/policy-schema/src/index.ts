@@ -392,3 +392,244 @@ export const DEFAULT_POLICY_V5: PolicyDocument = {
   approved_at: '2026-04-01T00:00:00Z',
   approved_by: 'Head of Procurement'
 };
+
+export const DEFAULT_POLICY_V5_1: PolicyDocument = {
+  version: '5.1',
+  document_number: 'CORVO-PROC-POL-04',
+  title: 'Corvo Engineering Procurement Policy (PR to PO) (Amended v5.1)',
+  effective_date: '2026-12-01',
+  status: 'DRAFT',
+  parameters: {
+    clubbing_window_days: 14,
+    clubbing_need_by_window_days: 7,
+    po_consolidation_window_hours: 24,
+    purchase_history_recency_days: 365,
+    preferred_supplier_window_days: 548
+  },
+  rules: [
+    {
+      rule_id: 'RULE_1_2_NEW_ITEM',
+      clause: '1.2',
+      name: 'New Item Sourcing',
+      description: 'A line that matches no item master item is a new item and always goes to sourcing.',
+      priority: 5,
+      conditions: {
+        field: 'item.is_new',
+        operator: 'eq',
+        value: true
+      },
+      outcome: {
+        decision: 'SOURCING_REQUEST',
+        route: 'NEW_ITEM_SOURCING',
+        supplier_selection: {
+          strategy: 'NONE'
+        },
+        requires_approval: false
+      }
+    },
+    {
+      rule_id: 'RULE_5_1_CAPEX',
+      clause: '5.1',
+      name: 'Capex Sourcing',
+      description: 'The item type is Capex. Goes to sourcing with 5 suggested suppliers.',
+      priority: 10,
+      conditions: {
+        field: 'item.item_type',
+        operator: 'eq',
+        value: 'Capex'
+      },
+      outcome: {
+        decision: 'SOURCING_REQUEST',
+        route: 'CAPEX_SOURCING',
+        supplier_selection: {
+          strategy: 'SUGGEST_RANKED',
+          suggest_count: 5
+        },
+        requires_approval: true,
+        approval_type: 'CAPEX_APPROVAL'
+      }
+    },
+    {
+      rule_id: 'RULE_5_2_CONTRACT_PO',
+      clause: '5.2',
+      name: 'Rate Contract PO',
+      description: 'A usable rate contract exists for the item within valid dates and ceiling.',
+      priority: 20,
+      conditions: {
+        field: 'contract.has_usable_contract',
+        operator: 'eq',
+        value: true
+      },
+      outcome: {
+        decision: 'PO',
+        route: 'CONTRACT_PO',
+        supplier_selection: {
+          strategy: 'CONTRACT_SUPPLIER',
+          price_basis: 'CONTRACT_RATE'
+        },
+        requires_approval: false
+      }
+    },
+    {
+      rule_id: 'RULE_5_2A_CHK1_ELECTRICAL_RFP',
+      clause: '5.2A',
+      name: 'Chakan Electrical Safety Sourcing (RFP)',
+      description: 'At CHK1, Electrical Spares worth >= ₹50,000 must be sourced. When value >= ₹8,00,000, formal RFP is required.',
+      priority: 24,
+      conditions: {
+        all: [
+          { field: 'requirement.plant', operator: 'eq', value: 'CHK1' },
+          { field: 'item.category', operator: 'eq', value: 'Electrical Spares' },
+          { field: 'requirement.value_inr', operator: 'gte', value: 800000 }
+        ]
+      },
+      outcome: {
+        decision: 'SOURCING_REQUEST',
+        route: 'RFP',
+        supplier_selection: {
+          strategy: 'SUGGEST_RANKED',
+          suggest_count: 5
+        },
+        requires_approval: false
+      }
+    },
+    {
+      rule_id: 'RULE_5_2A_CHK1_ELECTRICAL_RFQ',
+      clause: '5.2A',
+      name: 'Chakan Electrical Safety Sourcing (RFQ)',
+      description: 'At CHK1, Electrical Spares worth >= ₹50,000 must be sourced (RFQ below ₹8,00,000), even if otherwise eligible for emergency or spot PO.',
+      priority: 25,
+      conditions: {
+        all: [
+          { field: 'requirement.plant', operator: 'eq', value: 'CHK1' },
+          { field: 'item.category', operator: 'eq', value: 'Electrical Spares' },
+          { field: 'requirement.value_inr', operator: 'gte', value: 50000 }
+        ]
+      },
+      outcome: {
+        decision: 'SOURCING_REQUEST',
+        route: 'RFQ',
+        supplier_selection: {
+          strategy: 'SUGGEST_RANKED',
+          suggest_count: 3
+        },
+        requires_approval: false
+      }
+    },
+    {
+      rule_id: 'RULE_5_3_EMERGENCY_PO',
+      clause: '5.3',
+      name: 'Emergency Purchase Order',
+      description: 'Emergency requirement, value <= ₹5,00,000, bought from Active supplier in last 365 days.',
+      priority: 30,
+      conditions: {
+        all: [
+          { field: 'requirement.is_emergency', operator: 'eq', value: true },
+          { field: 'requirement.value_inr', operator: 'lte', value: 500000 },
+          { field: 'history.has_active_purchase_in_365d', operator: 'eq', value: true }
+        ]
+      },
+      outcome: {
+        decision: 'PO',
+        route: 'EMERGENCY_PO',
+        supplier_selection: {
+          strategy: 'FIRST_PREFERRED',
+          price_basis: 'REFERENCE_PRICE'
+        },
+        requires_approval: false
+      }
+    },
+    {
+      rule_id: 'RULE_5_4_SPOT_PO_PACKAGING',
+      clause: '5.4',
+      name: 'Spot Purchase Order (Packaging)',
+      description: 'Packaging items with value below ₹1,00,000, bought from an Active supplier in the last 365 days.',
+      priority: 38,
+      conditions: {
+        all: [
+          { field: 'item.category', operator: 'eq', value: 'Packaging' },
+          { field: 'requirement.value_inr', operator: 'lt', value: 100000 },
+          { field: 'history.has_active_purchase_in_365d', operator: 'eq', value: true }
+        ]
+      },
+      outcome: {
+        decision: 'PO',
+        route: 'SPOT_PO',
+        supplier_selection: {
+          strategy: 'FIRST_PREFERRED',
+          price_basis: 'REFERENCE_PRICE'
+        },
+        requires_approval: false
+      }
+    },
+    {
+      rule_id: 'RULE_5_4_SPOT_PO',
+      clause: '5.4',
+      name: 'Spot Purchase Order (Non-Packaging)',
+      description: 'Non-Packaging items with value below ₹2,00,000, bought from an Active supplier in the last 365 days.',
+      priority: 40,
+      conditions: {
+        all: [
+          { field: 'item.category', operator: 'neq', value: 'Packaging' },
+          { field: 'requirement.value_inr', operator: 'lt', value: 200000 },
+          { field: 'history.has_active_purchase_in_365d', operator: 'eq', value: true }
+        ]
+      },
+      outcome: {
+        decision: 'PO',
+        route: 'SPOT_PO',
+        supplier_selection: {
+          strategy: 'FIRST_PREFERRED',
+          price_basis: 'REFERENCE_PRICE'
+        },
+        requires_approval: false
+      }
+    },
+    {
+      rule_id: 'RULE_5_5_RFQ',
+      clause: '5.5',
+      name: 'Request For Quotation (RFQ)',
+      description: 'Value below ₹8,00,000 (including items never bought in last 365 days). Suggest 3 suppliers.',
+      priority: 50,
+      conditions: {
+        field: 'requirement.value_inr',
+        operator: 'lt',
+        value: 800000
+      },
+      outcome: {
+        decision: 'SOURCING_REQUEST',
+        route: 'RFQ',
+        supplier_selection: {
+          strategy: 'SUGGEST_RANKED',
+          suggest_count: 3
+        },
+        requires_approval: false
+      }
+    },
+    {
+      rule_id: 'RULE_5_6_RFP',
+      clause: '5.6',
+      name: 'Request For Proposal (RFP)',
+      description: 'Value ₹8,00,000 or more. Formal RFP with 5 suggested suppliers.',
+      priority: 60,
+      conditions: {
+        field: 'requirement.value_inr',
+        operator: 'gte',
+        value: 800000
+      },
+      outcome: {
+        decision: 'SOURCING_REQUEST',
+        route: 'RFP',
+        supplier_selection: {
+          strategy: 'SUGGEST_RANKED',
+          suggest_count: 5
+        },
+        requires_approval: false
+      }
+    }
+  ],
+  created_at: '2026-11-20T00:00:00Z',
+  amendment_summary:
+    'Amendment No. 1 to CORVO-PROC-POL-04 v5.0 (Effective 1 December 2026, approved by CFO on 20 November 2026). Changes: A1 — Packaging spot PO limit reduced from ₹2,00,000 to ₹1,00,000 (requirements >= ₹1,00,000 must be sourced). A2 — RFP threshold reduced from ₹10,00,000 to ₹8,00,000 (RFQ below ₹8,00,000; RFP ₹8,00,000 or more). A3 — New rule 5.2A Chakan electrical safety: At CHK1, Electrical Spares worth ₹50,000 or more must be sourced (contract PO rule 5.2 remains allowed).'
+};
+

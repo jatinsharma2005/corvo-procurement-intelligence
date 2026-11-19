@@ -6,7 +6,7 @@ export interface IPolicyVersion extends Document {
   document_number: string;
   title: string;
   effective_date: Date;
-  status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED' | 'APPROVED';
   parameters: {
     clubbing_window_days: number;
     clubbing_need_by_window_days: number;
@@ -27,7 +27,7 @@ const PolicyVersionSchema = new Schema<IPolicyVersion>(
     document_number: { type: String, required: true },
     title: { type: String, required: true },
     effective_date: { type: Date, required: true, index: true },
-    status: { type: String, enum: ['DRAFT', 'ACTIVE', 'ARCHIVED'], required: true, index: true },
+    status: { type: String, enum: ['DRAFT', 'ACTIVE', 'ARCHIVED', 'APPROVED'], required: true, index: true },
     parameters: {
       clubbing_window_days: { type: Number, default: 14 },
       clubbing_need_by_window_days: { type: Number, default: 7 },

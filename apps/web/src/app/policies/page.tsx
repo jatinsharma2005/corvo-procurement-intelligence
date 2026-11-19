@@ -18,11 +18,46 @@ import {
   FileText,
   Clock,
   History,
+  Trash2,
+  XCircle,
+  Info,
+  CheckCircle,
+  Tag,
+  FileCheck,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { api } from '@/lib/api-client';
 import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/components/auth-provider';
+
+function formatCondition(cond: any): string {
+  if (!cond) return 'Always applies';
+  if (cond.all && Array.isArray(cond.all)) {
+    return cond.all.map(formatCondition).join(' AND ');
+  }
+  if (cond.any && Array.isArray(cond.any)) {
+    return `(${cond.any.map(formatCondition).join(' OR ')})`;
+  }
+  if (cond.field) {
+    const fieldShort = cond.field.replace(/^(requirement|item|contract|history)\./, '');
+    let opSymbol = cond.operator;
+    if (cond.operator === 'eq') opSymbol = '==';
+    else if (cond.operator === 'neq') opSymbol = '!=';
+    else if (cond.operator === 'lt') opSymbol = '<';
+    else if (cond.operator === 'lte') opSymbol = '<=';
+    else if (cond.operator === 'gt') opSymbol = '>';
+    else if (cond.operator === 'gte') opSymbol = '>=';
+
+    let val = cond.value;
+    if (typeof val === 'number' && val >= 1000) {
+      val = `₹${val.toLocaleString('en-IN')}`;
+    } else if (typeof val === 'string') {
+      val = `'${val}'`;
+    }
+    return `${fieldShort} ${opSymbol} ${val}`;
+  }
+  return JSON.stringify(cond);
+}
 
 export default function PolicyStudioPage() {
   const { user } = useAuth();
@@ -84,12 +119,31 @@ export default function PolicyStudioPage() {
       setActivationNotice(`Policy ${res.policy.version} successfully approved & activated into runtime!`);
       setProposalResult(null);
       setAmendmentText('');
+      setSelectedFile(null);
       queryClient.invalidateQueries({ queryKey: ['policy-active'] });
       queryClient.invalidateQueries({ queryKey: ['policies-all'] });
       setTimeout(() => setActivationNotice(null), 8000);
     },
     onError: (err: any) => {
       alert(`Activation error: ${err.message}`);
+    },
+  });
+
+  // Reject Draft Policy Mutation
+  const rejectMutation = useMutation({
+    mutationFn: async (version: string) => {
+      return api.rejectPolicyDraft(version);
+    },
+    onSuccess: (res, version) => {
+      setActivationNotice(`Draft policy ${version} was successfully discarded.`);
+      setProposalResult(null);
+      setSelectedFile(null);
+      setAmendmentText('');
+      queryClient.invalidateQueries({ queryKey: ['policies-all'] });
+      setTimeout(() => setActivationNotice(null), 6000);
+    },
+    onError: (err: any) => {
+      alert(`Reject draft error: ${err.message}`);
     },
   });
 
@@ -173,8 +227,8 @@ export default function PolicyStudioPage() {
                     <td className="py-2.5 px-3 text-slate-700 font-medium">
                       {rule.description}
                     </td>
-                    <td className="py-2.5 px-3 font-mono text-[11px] text-blue-600 max-w-xs truncate" title={JSON.stringify(rule.condition)}>
-                      {JSON.stringify(rule.condition)}
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-blue-600 max-w-xs truncate" title={formatCondition(rule.conditions)}>
+                      {formatCondition(rule.conditions)}
                     </td>
                     <td className="py-2.5 px-3 font-semibold text-slate-800">
                       {rule.outcome?.decision}
@@ -265,50 +319,152 @@ export default function PolicyStudioPage() {
         {/* Section 3: Side-by-Side Diff & Activation Proposal */}
         {proposalResult && (
           <div className="bg-white rounded-2xl border-2 border-blue-400 p-6 shadow-lg space-y-6 animate-fadeIn">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+            {/* Header & Actions */}
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold shrink-0 mt-0.5">
                   <GitCompare className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Policy Amendment Proposal: Version {proposalResult.draft_policy?.version}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Summary: {proposalResult.proposal?.amendment_summary || 'Policy rules update'}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900">
+                      Policy Amendment Proposal: Version {proposalResult.draft_policy?.version}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase">
+                      {proposalResult.draft_policy?.status || 'DRAFT'}
+                    </span>
+                    {proposalResult.validation?.isValid !== false ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3 text-emerald-600" /> Validation Passed
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 text-rose-600" /> Validation Failed
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
+                    <span>
+                      Document: <span className="font-mono font-semibold text-slate-700">{proposalResult.proposal?.document_reference || proposalResult.draft_policy?.document_number || 'CORVO-PROC-POL-04'}</span>
+                    </span>
+                    <span>
+                      Effective: <span className="font-semibold text-slate-700">{formatDate(proposalResult.draft_policy?.effective_date)}</span>
+                    </span>
+                    {proposalResult.proposal?.approved_by && (
+                      <span>
+                        Approved by: <span className="font-semibold text-slate-700">{proposalResult.proposal.approved_by}</span>
+                        {proposalResult.proposal.approval_date && ` (${formatDate(proposalResult.proposal.approval_date)})`}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {user?.role === 'ADMIN' && (
-                <button
-                  onClick={() => approveMutation.mutate(proposalResult.draft_policy?.version)}
-                  disabled={approveMutation.isPending}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/30 transition-all flex items-center gap-2"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Approve & Activate v{proposalResult.draft_policy?.version}</span>
-                </button>
-              )}
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 w-full lg:w-auto justify-end">
+                {user?.role === 'ADMIN' && (
+                  <>
+                    <button
+                      onClick={() => rejectMutation.mutate(proposalResult.draft_policy?.version)}
+                      disabled={rejectMutation.isPending || approveMutation.isPending}
+                      className="px-4 py-2.5 rounded-xl border border-rose-300 hover:bg-rose-50 text-rose-700 font-semibold text-xs transition-all flex items-center gap-1.5 disabled:opacity-50"
+                      title="Discard this draft policy amendment"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-600" />
+                      <span>{rejectMutation.isPending ? 'Discarding...' : 'Reject Draft'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => approveMutation.mutate(proposalResult.draft_policy?.version)}
+                      disabled={approveMutation.isPending || rejectMutation.isPending || proposalResult.validation?.isValid === false}
+                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-emerald-600/30 transition-all flex items-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{approveMutation.isPending ? 'Activating...' : `Approve & Activate v${proposalResult.draft_policy?.version}`}</span>
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* Diff Columns */}
+            {/* Executive Summary Card */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                <Info className="w-4 h-4 text-blue-600" />
+                <span>Executive Amendment Summary</span>
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                {proposalResult.draft_policy?.amendment_summary || proposalResult.proposal?.amendment_summary || 'Policy rules update.'}
+              </p>
+            </div>
+
+            {/* Clause-by-Clause Breakdown (A1, A2, A3) */}
+            {proposalResult.proposal?.clauses && proposalResult.proposal.clauses.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  <Tag className="w-4 h-4 text-indigo-600" />
+                  <span>Amended Policy Clauses ({proposalResult.proposal.clauses.length})</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {proposalResult.proposal.clauses.map((clause: any) => (
+                    <div
+                      key={clause.id}
+                      className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/40 space-y-2 flex flex-col justify-between"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded bg-indigo-600 text-white font-bold text-[10px] font-mono">
+                            {clause.id}
+                          </span>
+                          <span className="text-[11px] font-mono font-semibold text-indigo-800">
+                            {clause.clause_reference}
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-bold text-slate-900">{clause.title}</h4>
+                        <p className="text-[11px] text-slate-600 leading-normal">{clause.description}</p>
+                      </div>
+                      {clause.reason && (
+                        <div className="pt-2 border-t border-indigo-100/80 text-[10px] text-indigo-900/80 italic">
+                          Reason: {clause.reason}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Side-by-Side Diff Columns */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Current Active Rules */}
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Current Active ({activePolicy?.version})
+                    Current Active Baseline ({activePolicy?.version || 'v5.0'})
                   </span>
-                  <span className="text-[10px] text-slate-400">Baseline</span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    {activePolicy?.rules?.length || 0} Rules
+                  </span>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  {(activePolicy?.rules || []).slice(0, 4).map((r: any) => (
-                    <div key={r.rule_id} className="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1">
-                      <div className="font-semibold text-slate-800">{r.rule_id}: {r.description}</div>
-                      <div className="text-[11px] text-slate-500 font-mono">
-                        Route: {r.outcome?.route} • Thresholds
+                <div className="space-y-2 text-xs max-h-[600px] overflow-y-auto pr-1">
+                  {(activePolicy?.rules || []).map((r: any) => (
+                    <div key={r.rule_id} className="p-3 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-slate-800 text-[11px]">
+                          {r.clause} • {r.rule_id}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[9px]">
+                          Priority {r.priority}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-700 font-medium">{r.description}</p>
+                      <div className="text-[10px] font-mono text-slate-500 bg-slate-50 p-1.5 rounded border border-slate-100 truncate" title={formatCondition(r.conditions)}>
+                        {formatCondition(r.conditions)}
+                      </div>
+                      <div className="flex items-center justify-between pt-1 text-[10px]">
+                        <span className="text-slate-500">Route: <span className="font-mono font-semibold text-slate-700">{r.outcome?.route}</span></span>
+                        <span className="text-slate-500">Decision: <span className="font-semibold text-slate-700">{r.outcome?.decision}</span></span>
                       </div>
                     </div>
                   ))}
@@ -316,25 +472,75 @@ export default function PolicyStudioPage() {
               </div>
 
               {/* Proposed New Rules */}
-              <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 space-y-3">
+              <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/40 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-blue-900 uppercase tracking-wider">
-                    Proposed Draft ({proposalResult.draft_policy?.version})
+                    Proposed Draft Rules ({proposalResult.draft_policy?.version})
                   </span>
-                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                    Ready for Activation
+                  <span className="text-[10px] text-blue-700 font-semibold">
+                    {proposalResult.draft_policy?.rules?.length || 0} Rules
                   </span>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  {(proposalResult.draft_policy?.rules || []).slice(0, 4).map((r: any) => (
-                    <div key={r.rule_id} className="p-2.5 rounded-lg bg-white border border-blue-200 space-y-1">
-                      <div className="font-semibold text-blue-900">{r.rule_id}: {r.description}</div>
-                      <div className="text-[11px] text-blue-600 font-mono">
-                        Route: {r.outcome?.route} • Dynamic Evaluator
+                <div className="space-y-2 text-xs max-h-[600px] overflow-y-auto pr-1">
+                  {(proposalResult.draft_policy?.rules || []).map((r: any) => {
+                    const baselineRule = (activePolicy?.rules || []).find((b: any) => b.rule_id === r.rule_id);
+                    const isNew = !baselineRule;
+                    const isModified =
+                      baselineRule &&
+                      (baselineRule.description !== r.description ||
+                        JSON.stringify(baselineRule.conditions) !== JSON.stringify(r.conditions) ||
+                        JSON.stringify(baselineRule.outcome) !== JSON.stringify(r.outcome));
+
+                    return (
+                      <div
+                        key={r.rule_id}
+                        className={`p-3 rounded-xl space-y-1.5 shadow-xs border transition-all ${
+                          isNew
+                            ? 'bg-emerald-50/80 border-emerald-300'
+                            : isModified
+                            ? 'bg-amber-50/80 border-amber-300'
+                            : 'bg-white border-blue-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-slate-900 text-[11px]">
+                              {r.clause} • {r.rule_id}
+                            </span>
+                            {isNew && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[9px]">
+                                + NEW RULE
+                              </span>
+                            )}
+                            {isModified && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-600 text-white font-bold text-[9px]">
+                                MODIFIED
+                              </span>
+                            )}
+                            {!isNew && !isModified && (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px]">
+                                UNCHANGED
+                              </span>
+                            )}
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded bg-white/80 text-slate-700 font-mono text-[9px] border border-slate-200">
+                            Priority {r.priority}
+                          </span>
+                        </div>
+                        <p className={`text-[11px] font-medium ${isNew ? 'text-emerald-950' : isModified ? 'text-amber-950' : 'text-slate-800'}`}>
+                          {r.description}
+                        </p>
+                        <div className="text-[10px] font-mono text-blue-700 bg-white/90 p-1.5 rounded border border-blue-100 truncate" title={formatCondition(r.conditions)}>
+                          {formatCondition(r.conditions)}
+                        </div>
+                        <div className="flex items-center justify-between pt-1 text-[10px]">
+                          <span className="text-slate-600">Route: <span className="font-mono font-bold text-slate-900">{r.outcome?.route}</span></span>
+                          <span className="text-slate-600">Decision: <span className="font-bold text-slate-900">{r.outcome?.decision}</span></span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>

@@ -67,10 +67,11 @@ router.post('/upload', upload.single('file'), authMiddleware, async (req: Authen
       success: true,
       draft_policy: result.draftPolicy,
       proposal: result.proposal,
-      diff: result.diff
+      diff: result.diff,
+      validation: result.validation
     });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 });
 
@@ -100,10 +101,34 @@ router.post('/draft', authMiddleware, async (req: AuthenticatedRequest, res: Res
       success: true,
       draft_policy: result.draftPolicy,
       proposal: result.proposal,
-      diff: result.diff
+      diff: result.diff,
+      validation: result.validation
     });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// DELETE /api/policies/:version/draft (Reject / discard draft policy)
+router.delete('/:version/draft', authMiddleware, requireRole('ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await policyService.rejectPolicyDraft(req.params.version);
+
+    await auditService.log({
+      entity_type: 'POLICY',
+      entity_id: req.params.version,
+      action: 'REJECT',
+      actor: {
+        user_id: req.user?.id || 'usr-admin',
+        name: req.user?.name || 'Procurement Admin',
+        role: req.user?.role || 'ADMIN'
+      },
+      details: { version: req.params.version, reason: 'Draft rejected by administrator' }
+    });
+
+    return res.json({ success: true, message: `Draft policy ${req.params.version} successfully rejected.` });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
   }
 });
 
